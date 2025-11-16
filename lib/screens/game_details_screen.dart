@@ -185,6 +185,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
       // Reload plays
       await _loadPlays();
 
+      // Reload recently played games list
+      ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -232,6 +235,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
 
         // Reload plays
         await _loadPlays();
+
+        // Reload recently played games list
+        ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

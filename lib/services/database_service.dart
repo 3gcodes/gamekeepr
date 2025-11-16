@@ -292,6 +292,26 @@ class DatabaseService {
     return maps.map((map) => Play.fromMap(map)).toList();
   }
 
+  /// Get games that have been played with their most recent play date
+  /// Returns a list of maps with game data and most recent play date
+  Future<List<Map<String, dynamic>>> getGamesWithRecentPlays() async {
+    final db = await database;
+
+    // Query to get games with their most recent play date
+    final result = await db.rawQuery('''
+      SELECT
+        g.*,
+        MAX(p.date_played) as last_played,
+        COUNT(p.id) as play_count
+      FROM games g
+      INNER JOIN plays p ON g.id = p.game_id
+      GROUP BY g.id
+      ORDER BY MAX(p.date_played) DESC
+    ''');
+
+    return result;
+  }
+
   Future<void> close() async {
     final db = await database;
     await db.close();

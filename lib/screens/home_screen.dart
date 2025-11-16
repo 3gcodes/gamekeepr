@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
 import '../models/game.dart';
+import '../models/game_with_play_info.dart';
 import 'game_details_screen.dart';
 import 'settings_screen.dart';
 import 'nfc_scan_screen.dart';
@@ -95,13 +97,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentTab = ref.watch(currentViewTabProvider);
     final filteredGames = ref.watch(filteredGamesProvider);
+    final filteredRecentlyPlayed = ref.watch(filteredRecentlyPlayedGamesProvider);
     final syncStatus = ref.watch(syncStatusProvider);
     final isSyncing = syncStatus == SyncStatus.syncing;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Game Keepr'),
+        title: Text(currentTab == 0 ? 'Game Keepr' : 'Recently Played'),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.nfc),
@@ -202,83 +206,185 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           Expanded(
-            child: filteredGames.when(
-              data: (games) {
-                if (games.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.casino_outlined,
-                          size: 64,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _searchController.text.isEmpty
-                              ? 'No games in collection'
-                              : 'No games found',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        if (_searchController.text.isEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'Tap the sync button to load your collection',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  );
-                }
-
-                return ListView.builder(
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  itemCount: games.length,
-                  itemBuilder: (context, index) {
-                    final game = games[index];
-                    return _GameListItem(
-                      game: game,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GameDetailsScreen(game: game),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text('Error: $error'),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () {
-                        ref.read(gamesProvider.notifier).loadGames();
-                      },
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            child: currentTab == 0
+                ? _buildCollectionView(filteredGames)
+                : _buildRecentlyPlayedView(filteredRecentlyPlayed),
           ),
         ],
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: currentTab,
+        onTap: (index) {
+          ref.read(currentViewTabProvider.notifier).state = index;
+          // Clear search when switching tabs
+          _searchController.clear();
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.casino),
+            label: 'Collection',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history),
+            label: 'Recently Played',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCollectionView(AsyncValue<List<Game>> filteredGames) {
+    return filteredGames.when(
+      data: (games) {
+        if (games.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.casino_outlined,
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _searchController.text.isEmpty
+                      ? 'No games in collection'
+                      : 'No games found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (_searchController.text.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap the sync button to load your collection',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          itemCount: games.length,
+          itemBuilder: (context, index) {
+            final game = games[index];
+            return _GameListItem(
+              game: game,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameDetailsScreen(game: game),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('Error: $error'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(gamesProvider.notifier).loadGames();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentlyPlayedView(AsyncValue<List<GameWithPlayInfo>> filteredRecentlyPlayed) {
+    return filteredRecentlyPlayed.when(
+      data: (gamesWithPlayInfo) {
+        if (gamesWithPlayInfo.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.history,
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _searchController.text.isEmpty
+                      ? 'No games played yet'
+                      : 'No played games found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (_searchController.text.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Record your first play to see it here',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          itemCount: gamesWithPlayInfo.length,
+          itemBuilder: (context, index) {
+            final gameWithInfo = gamesWithPlayInfo[index];
+            return _RecentlyPlayedGameListItem(
+              gameWithPlayInfo: gameWithInfo,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameDetailsScreen(game: gameWithInfo.game),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('Error: $error'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
         ),
       ),
     );
@@ -376,6 +482,142 @@ class _GameListItem extends StatelessWidget {
                         const SizedBox(width: 4),
                         Text(
                           game.playtimeInfo,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (game.location != null && game.location!.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.location_on, size: 14, color: Colors.blue[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            game.location!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RecentlyPlayedGameListItem extends StatelessWidget {
+  final GameWithPlayInfo gameWithPlayInfo;
+  final VoidCallback onTap;
+
+  const _RecentlyPlayedGameListItem({
+    required this.gameWithPlayInfo,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final game = gameWithPlayInfo.game;
+    final lastPlayed = gameWithPlayInfo.lastPlayed;
+    final playCount = gameWithPlayInfo.playCount;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Thumbnail
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: game.thumbnailUrl != null
+                    ? CachedNetworkImage(
+                        imageUrl: game.thumbnailUrl!,
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          width: 60,
+                          height: 60,
+                          color: Colors.grey[300],
+                          child: const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          width: 60,
+                          height: 60,
+                          color: Colors.grey[300],
+                          child: const Icon(Icons.casino, size: 30),
+                        ),
+                      )
+                    : Container(
+                        width: 60,
+                        height: 60,
+                        color: Colors.grey[300],
+                        child: const Icon(Icons.casino, size: 30),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              // Game Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      game.name,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.event, size: 14, color: Colors.green[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Last played: ${DateFormat('MMM d, yyyy').format(lastPlayed)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green[600],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(Icons.bar_chart, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          '$playCount ${playCount == 1 ? 'play' : 'plays'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Icon(Icons.people, size: 14, color: Colors.grey[600]),
+                        const SizedBox(width: 4),
+                        Text(
+                          game.playersInfo,
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey[600],
