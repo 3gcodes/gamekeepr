@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game.dart';
+import '../models/game_with_play_info.dart';
 import '../services/database_service.dart';
 import '../services/bgg_service.dart';
 import '../services/nfc_service.dart';
@@ -154,6 +155,55 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
     error: (error, stack) => AsyncValue.error(error, stack),
   );
 });
+
+// Recently Played Games Provider
+final recentlyPlayedGamesProvider = StateNotifierProvider<RecentlyPlayedGamesNotifier, AsyncValue<List<GameWithPlayInfo>>>((ref) {
+  return RecentlyPlayedGamesNotifier(ref);
+});
+
+class RecentlyPlayedGamesNotifier extends StateNotifier<AsyncValue<List<GameWithPlayInfo>>> {
+  final Ref ref;
+
+  RecentlyPlayedGamesNotifier(this.ref) : super(const AsyncValue.loading()) {
+    loadRecentlyPlayedGames();
+  }
+
+  Future<void> loadRecentlyPlayedGames() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = ref.read(databaseServiceProvider);
+      final gamesData = await db.getGamesWithRecentPlays();
+      final gamesWithPlayInfo = gamesData.map((data) => GameWithPlayInfo.fromMap(data)).toList();
+      state = AsyncValue.data(gamesWithPlayInfo);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+}
+
+// Filtered Recently Played Games Provider
+final filteredRecentlyPlayedGamesProvider = Provider<AsyncValue<List<GameWithPlayInfo>>>((ref) {
+  final games = ref.watch(recentlyPlayedGamesProvider);
+  final query = ref.watch(searchQueryProvider);
+
+  if (query.isEmpty) {
+    return games;
+  }
+
+  return games.when(
+    data: (gamesList) {
+      final filtered = gamesList
+          .where((gameWithInfo) => gameWithInfo.game.name.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+      return AsyncValue.data(filtered);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
+});
+
+// Current View Tab Provider (0 = Collection, 1 = Recently Played)
+final currentViewTabProvider = StateProvider<int>((ref) => 0);
 
 // Sync Status Provider
 final syncStatusProvider = StateProvider<SyncStatus>((ref) => SyncStatus.idle);

@@ -64,6 +64,9 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
 
           await db.insertPlay(play);
 
+          // Reload recently played games list
+          ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+
           final formattedDate = DateFormat('MMM d, yyyy').format(DateTime.now());
 
           ScaffoldMessenger.of(context).showSnackBar(
