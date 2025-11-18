@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../models/game.dart';
 import '../models/play.dart';
 import '../providers/app_providers.dart';
+import '../widgets/location_picker.dart';
 import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
@@ -19,7 +20,6 @@ class GameDetailsScreen extends ConsumerStatefulWidget {
 }
 
 class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
-  late TextEditingController _locationController;
   Game? _detailedGame;
   bool _isLoadingDetails = false;
   List<Play> _plays = [];
@@ -28,7 +28,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _locationController = TextEditingController(text: widget.game.location ?? '');
     _detailedGame = widget.game;
 
     // Skip fetching details - BGG XML API v2 authentication is not accessible
@@ -117,19 +116,11 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _locationController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveLocation() async {
-    final location = _locationController.text.trim();
-
+  Future<void> _saveLocation(String? location) async {
     try {
       await ref.read(gamesProvider.notifier).updateGameLocation(
             widget.game.id!,
-            location,
+            location ?? '',
           );
 
       if (mounted) {
@@ -137,6 +128,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
           const SnackBar(
             content: Text('Location saved'),
             backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
           ),
         );
       }
@@ -440,31 +432,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
                   const SizedBox(height: 16),
 
                   // Location Editor
-                  Text(
-                    'Location',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _locationController,
-                    decoration: InputDecoration(
-                      hintText: 'e.g., Shelf B, Bay 8',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      prefixIcon: const Icon(Icons.location_on),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _saveLocation,
-                      icon: const Icon(Icons.save),
-                      label: const Text('Save Location'),
-                    ),
+                  LocationPicker(
+                    initialLocation: game.location,
+                    onLocationChanged: _saveLocation,
                   ),
 
                   const SizedBox(height: 16),

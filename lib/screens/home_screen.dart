@@ -9,6 +9,7 @@ import 'game_details_screen.dart';
 import 'settings_screen.dart';
 import 'nfc_scan_screen.dart';
 import 'nfc_record_play_screen.dart';
+import 'write_shelf_tag_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -169,6 +170,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   context,
                   MaterialPageRoute(builder: (_) => const NfcRecordPlayScreen()),
                 );
+              } else if (value == 'write_shelf') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const WriteShelfTagScreen()),
+                );
               }
             },
             itemBuilder: (context) => [
@@ -178,7 +184,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   children: [
                     Icon(Icons.nfc),
                     SizedBox(width: 12),
-                    Text('Scan Game'),
+                    Text('Scan Tag'),
                   ],
                 ),
               ),
@@ -189,6 +195,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Icon(Icons.event_available),
                     SizedBox(width: 12),
                     Text('Record Play'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'write_shelf',
+                child: Row(
+                  children: [
+                    Icon(Icons.shelves),
+                    SizedBox(width: 12),
+                    Text('Write Shelf Tag'),
                   ],
                 ),
               ),

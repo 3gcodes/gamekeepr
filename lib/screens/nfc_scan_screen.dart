@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
 import 'game_details_screen.dart';
+import 'shelf_view_screen.dart';
 
 class NfcScanScreen extends ConsumerStatefulWidget {
   const NfcScanScreen({super.key});
@@ -31,13 +32,13 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
     });
 
     try {
-      final gameId = await nfcService.readGameId();
+      final tagData = await nfcService.readTag();
 
-      if (gameId == null) {
+      if (tagData == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Could not read game ID from tag'),
+              content: Text('Could not read tag'),
               backgroundColor: Colors.orange,
             ),
           );
@@ -48,26 +49,41 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
         return;
       }
 
-      // Lookup game by BGG ID
-      final game = await ref.read(gamesProvider.notifier).getGameByBggId(gameId);
-
-      if (mounted) {
-        if (game != null) {
-          // Navigate to game details
+      // Handle different tag types
+      if (tagData['type'] == 'shelf') {
+        // Navigate to shelf view
+        final shelf = tagData['data'] as String;
+        if (mounted) {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => GameDetailsScreen(game: game),
+              builder: (_) => ShelfViewScreen(shelf: shelf),
             ),
           );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Game with ID $gameId not found in collection'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          Navigator.pop(context);
+        }
+      } else if (tagData['type'] == 'game') {
+        // Lookup game by BGG ID
+        final gameId = tagData['data'] as int;
+        final game = await ref.read(gamesProvider.notifier).getGameByBggId(gameId);
+
+        if (mounted) {
+          if (game != null) {
+            // Navigate to game details
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GameDetailsScreen(game: game),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Game with ID $gameId not found in collection'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            Navigator.pop(context);
+          }
         }
       }
     } catch (e) {
