@@ -139,11 +139,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final timestamp = DateTime.now();
       final formattedDate = '${timestamp.year}${timestamp.month.toString().padLeft(2, '0')}${timestamp.day.toString().padLeft(2, '0')}_${timestamp.hour.toString().padLeft(2, '0')}${timestamp.minute.toString().padLeft(2, '0')}';
 
+      // Get the screen size for share position
+      final box = context.findRenderObject() as RenderBox?;
+      final sharePositionOrigin = box != null
+          ? box.localToGlobal(Offset.zero) & box.size
+          : null;
+
       // Share the file using iOS share sheet
       // User can then choose to save to iCloud Drive, Files, etc.
       final result = await Share.shareXFiles(
         [XFile(backupPath, name: 'gamekeepr_backup_$formattedDate.db', mimeType: 'application/octet-stream')],
         text: 'Game Keepr database backup from $formattedDate',
+        sharePositionOrigin: sharePositionOrigin,
       );
 
       if (mounted && result.status == ShareResultStatus.success) {
