@@ -165,11 +165,61 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
 
     if (selectedDate == null) return;
 
+    // Show won dialog
+    bool wonValue = false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Record Play'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    DateFormat('EEEE, MMMM d, yyyy').format(selectedDate),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    value: wonValue,
+                    onChanged: (value) {
+                      setState(() {
+                        wonValue = value ?? false;
+                      });
+                    },
+                    title: const Text('Won'),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
     try {
       final db = ref.read(databaseServiceProvider);
       final play = Play(
         gameId: widget.game.id!,
         datePlayed: selectedDate,
+        won: wonValue,
       );
 
       await db.insertPlay(play);
@@ -181,9 +231,10 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
       ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
 
       if (mounted) {
+        final wonText = wonValue ? ' - Won!' : ' - Lost';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Play recorded for ${DateFormat('MMM d, yyyy').format(selectedDate)}'),
+            content: Text('Play recorded for ${DateFormat('MMM d, yyyy').format(selectedDate)}$wonText'),
             backgroundColor: Colors.green,
           ),
         );
@@ -481,10 +532,39 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
                         return Card(
                           margin: const EdgeInsets.only(bottom: 8),
                           child: ListTile(
-                            leading: const Icon(Icons.event, color: Colors.blue),
-                            title: Text(
-                              DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            leading: play.won == null
+                                ? const Icon(Icons.event, color: Colors.blue)
+                                : play.won!
+                                    ? const Icon(Icons.emoji_events, color: Colors.amber)
+                                    : const Icon(Icons.event, color: Colors.grey),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
+                                    style: const TextStyle(fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                                if (play.won != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: play.won! ? Colors.green[100] : Colors.red[100],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      play.won! ? 'Won' : 'Lost',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: play.won! ? Colors.green[800] : Colors.red[800],
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             subtitle: Text(
                               'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',

@@ -23,7 +23,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -66,6 +66,7 @@ class DatabaseService {
         game_id INTEGER NOT NULL,
         date_played TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        won INTEGER,
         FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
       )
     ''');
@@ -100,6 +101,13 @@ class DatabaseService {
 
       await db.execute('''
         CREATE INDEX idx_plays_date ON plays(date_played)
+      ''');
+    }
+
+    if (oldVersion < 3) {
+      // Add won column for version 3
+      await db.execute('''
+        ALTER TABLE plays ADD COLUMN won INTEGER
       ''');
     }
   }

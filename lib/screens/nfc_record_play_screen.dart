@@ -55,11 +55,38 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
 
       if (mounted) {
         if (game != null && game.id != null) {
+          // Ask if they won
+          final won = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              title: const Text('Did you win?'),
+              content: Text('${game.name}\n${DateFormat('MMM d, yyyy').format(DateTime.now())}'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('No'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Yes'),
+                ),
+              ],
+            ),
+          );
+
+          if (won == null) {
+            // User cancelled - go back
+            Navigator.pop(context);
+            return;
+          }
+
           // Record the play with today's date
           final db = ref.read(databaseServiceProvider);
           final play = Play(
             gameId: game.id!,
             datePlayed: DateTime.now(),
+            won: won,
           );
 
           await db.insertPlay(play);
@@ -68,10 +95,11 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
           ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
 
           final formattedDate = DateFormat('MMM d, yyyy').format(DateTime.now());
+          final wonText = won ? ' - Won!' : ' - Lost';
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Play recorded for ${game.name} on $formattedDate'),
+              content: Text('Play recorded for ${game.name} on $formattedDate$wonText'),
               backgroundColor: Colors.green,
               duration: const Duration(seconds: 3),
             ),
