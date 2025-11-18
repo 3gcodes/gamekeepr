@@ -65,11 +65,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
+    // Show blocking progress modal
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => PopScope(
+          canPop: false,
+          child: Dialog(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 24),
+                  const Text(
+                    'Syncing collection...',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This may take a moment',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
 
     try {
       await ref.read(gamesProvider.notifier).syncFromBgg(username, password);
       ref.read(syncStatusProvider.notifier).state = SyncStatus.success;
+
+      // Close the progress dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -81,6 +124,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
     } catch (e) {
       ref.read(syncStatusProvider.notifier).state = SyncStatus.error;
+
+      // Close the progress dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -147,16 +195,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
           IconButton(
-            icon: isSyncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.sync),
+            icon: const Icon(Icons.sync),
             onPressed: isSyncing ? null : _syncGames,
             tooltip: 'Sync from BGG',
           ),
