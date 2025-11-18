@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/app_providers.dart';
 import '../models/game.dart';
+import '../constants/location_constants.dart';
 import 'game_details_screen.dart';
 
 /// Screen showing all games on a specific shelf
@@ -30,13 +31,6 @@ class ShelfViewScreen extends ConsumerWidget {
                   game.location != null &&
                   game.location!.toUpperCase().startsWith(shelf.toUpperCase()))
               .toList();
-
-          // Sort by bay number
-          shelfGames.sort((a, b) {
-            final locationA = a.location ?? '';
-            final locationB = b.location ?? '';
-            return locationA.compareTo(locationB);
-          });
 
           if (shelfGames.isEmpty) {
             return Center(
@@ -69,6 +63,18 @@ class ShelfViewScreen extends ConsumerWidget {
             );
           }
 
+          // Group games by bay
+          final gamesByBay = <int, List<Game>>{};
+          for (final game in shelfGames) {
+            final locationParts = LocationConstants.parseLocation(game.location!);
+            if (locationParts != null) {
+              gamesByBay.putIfAbsent(locationParts.bay, () => []).add(game);
+            }
+          }
+
+          // Sort bay numbers
+          final sortedBays = gamesByBay.keys.toList()..sort();
+
           return Column(
             children: [
               // Shelf summary
@@ -91,22 +97,72 @@ class ShelfViewScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              // Games list
+              // Games list grouped by bay
               Expanded(
                 child: ListView.builder(
-                  itemCount: shelfGames.length,
+                  itemCount: sortedBays.length,
                   itemBuilder: (context, index) {
-                    final game = shelfGames[index];
-                    return _ShelfGameListItem(
-                      game: game,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => GameDetailsScreen(game: game),
+                    final bay = sortedBays[index];
+                    final gamesInBay = gamesByBay[bay]!;
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Bay header
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
                           ),
-                        );
-                      },
+                          color: Colors.grey[200],
+                          child: Row(
+                            children: [
+                              Icon(Icons.grid_view, size: 20, color: Colors.grey[700]),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Bay $bay',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[400],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  '${gamesInBay.length}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Games in this bay
+                        ...gamesInBay.map((game) => _ShelfGameListItem(
+                              game: game,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => GameDetailsScreen(game: game),
+                                  ),
+                                );
+                              },
+                            )),
+                      ],
                     );
                   },
                 ),
