@@ -9,42 +9,86 @@ import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
   final Game game;
+  final bool isOwned;
 
   const GameDetailsScreen({
     super.key,
     required this.game,
+    this.isOwned = true, // Default to owned for backward compatibility
   });
 
   @override
   ConsumerState<GameDetailsScreen> createState() => _GameDetailsScreenState();
 }
 
-class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
+class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with SingleTickerProviderStateMixin {
   Game? _detailedGame;
   bool _isLoadingDetails = false;
   List<Play> _plays = [];
   bool _isLoadingPlays = false;
+  late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _detailedGame = widget.game;
+    _tabController = TabController(length: 2, vsync: this);
 
-    // Skip fetching details - BGG XML API v2 authentication is not accessible
-    // We already have essential info (name, year, images) from collection sync
-    // if (_needsDetails(widget.game)) {
-    //   _fetchGameDetails();
-    // }
+    // Fetch details once if we don't have them
+    if (_needsDetails(widget.game)) {
+      _fetchGameDetails();
+    }
 
     // Load play history for this game
     _loadPlays();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   bool _needsDetails(Game game) {
-    // If we don't have description or player counts, we need details
+    // If we don't have description, categories, mechanics, or expansion info, we need details
     return game.description == null ||
-           game.minPlayers == null ||
-           game.maxPlayers == null;
+           game.categories == null ||
+           game.mechanics == null ||
+           (game.baseGame == null && game.expansions == null);
+  }
+
+  Future<void> _onExpansionTap(int expansionBggId, String expansionName) async {
+    // Check if we own this expansion
+    final ownedGame = await ref.read(gamesProvider.notifier).getGameByBggId(expansionBggId);
+
+    if (ownedGame != null) {
+      // Navigate to the game details screen
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => GameDetailsScreen(game: ownedGame),
+          ),
+        );
+      }
+    } else {
+      // Show a message that we don't own this game
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Game Not Owned'),
+            content: Text('You don\'t own "$expansionName" in your collection yet.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _fetchGameDetails() async {
@@ -122,6 +166,12 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
             widget.game.id!,
             location ?? '',
           );
+
+      // Update local state to reflect the change immediately
+      setState(() {
+        final currentGame = _detailedGame ?? widget.game;
+        _detailedGame = currentGame.copyWith(location: location ?? '');
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -244,6 +294,102 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error recording play: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _editPlay(Play play) async {
+    // Show date picker with initial date
+    final selectedDate = await showDatePicker(
+      context: context,
+      initialDate: play.datePlayed,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+
+    if (selectedDate == null) return;
+
+    // Show won dialog with initial value
+    bool wonValue = play.won ?? false;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Edit Play'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    DateFormat('EEEE, MMMM d, yyyy').format(selectedDate),
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    value: wonValue,
+                    onChanged: (value) {
+                      setState(() {
+                        wonValue = value ?? false;
+                      });
+                    },
+                    title: const Text('Won'),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final db = ref.read(databaseServiceProvider);
+      final updatedPlay = play.copyWith(
+        datePlayed: selectedDate,
+        won: wonValue,
+      );
+
+      await db.updatePlay(updatedPlay);
+
+      // Reload plays
+      await _loadPlays();
+
+      // Reload recently played games list
+      ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+
+      if (mounted) {
+        final wonText = wonValue ? ' - Won!' : ' - Lost';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Play updated for ${DateFormat('MMM d, yyyy').format(selectedDate)}$wonText'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating play: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -382,6 +528,292 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
     }
   }
 
+  Widget _buildDetailsTab(Game game) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title
+          Text(
+            game.name,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 16),
+
+          // Stats
+          if (game.yearPublished != null)
+            _InfoRow(
+              icon: Icons.calendar_today,
+              label: 'Year Published',
+              value: game.yearPublished.toString(),
+            ),
+
+          _InfoRow(
+            icon: Icons.people,
+            label: 'Players',
+            value: game.playersInfo,
+          ),
+
+          _InfoRow(
+            icon: Icons.access_time,
+            label: 'Playtime',
+            value: game.playtimeInfo,
+          ),
+
+          if (game.averageRating != null)
+            _InfoRow(
+              icon: Icons.star,
+              label: 'Rating',
+              value: game.averageRating!.toStringAsFixed(2),
+            ),
+
+          _InfoRow(
+            icon: Icons.location_on,
+            label: 'Location',
+            value: game.location?.isNotEmpty == true ? game.location! : 'Not set',
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 16),
+
+          // Description
+          if (game.description != null &&
+              game.description!.isNotEmpty) ...[
+            Text(
+              'Description',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            _ExpandableDescription(
+              description: _stripHtmlTags(game.description!),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+          ],
+
+          // Categories and Mechanics
+          if (game.categories != null && game.categories!.isNotEmpty) ...[
+            Text(
+              'Categories',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              children: game.categories!.asMap().entries.map((entry) {
+                final color = _getColorForIndex(entry.key, true);
+                return _TagChip(
+                  label: entry.value,
+                  color: color,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if (game.mechanics != null && game.mechanics!.isNotEmpty) ...[
+            Text(
+              'Mechanics',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              children: game.mechanics!.asMap().entries.map((entry) {
+                final color = _getColorForIndex(entry.key, false);
+                return _TagChip(
+                  label: entry.value,
+                  color: color,
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          if ((game.categories != null && game.categories!.isNotEmpty) ||
+              (game.mechanics != null && game.mechanics!.isNotEmpty)) ...[
+            const Divider(),
+            const SizedBox(height: 16),
+          ],
+
+          // Expansions or Base Game (only show for owned games)
+          if (widget.isOwned && game.baseGame != null) ...[
+            // This is an expansion, show the base game
+            Text(
+              'Base Game',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              children: [
+                _ClickableTagChip(
+                  label: game.baseGame!.name,
+                  color: Colors.blueGrey,
+                  onTap: () => _onExpansionTap(game.baseGame!.bggId, game.baseGame!.name),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+          ] else if (widget.isOwned && game.expansions != null && game.expansions!.isNotEmpty) ...[
+            // This is a base game, show expansions
+            Text(
+              'Expansions',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            _ExpandableExpansions(
+              expansions: game.expansions!,
+              onExpansionTap: _onExpansionTap,
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+          ],
+
+          // Location Editor (only for owned games)
+          if (widget.isOwned) ...[
+            Text(
+              'Set Location',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            LocationPicker(
+              initialLocation: game.location,
+              onLocationChanged: _saveLocation,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlayHistoryTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.isOwned) ...[
+            Text(
+              'Play History',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _recordPlay,
+                icon: const Icon(Icons.add),
+                label: const Text('Record Play'),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Play History List
+            if (_isLoadingPlays)
+              const Center(child: CircularProgressIndicator())
+            else if (_plays.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(
+                  child: Text(
+                    'No plays recorded yet',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              )
+            else
+              Column(
+                children: _plays.map((play) {
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: play.won == null
+                          ? const Icon(Icons.event, color: Colors.blue)
+                          : play.won!
+                              ? const Icon(Icons.emoji_events, color: Colors.amber)
+                              : const Icon(Icons.event, color: Colors.grey),
+                      title: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
+                              style: const TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                          if (play.won != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: play.won! ? Colors.green[100] : Colors.red[100],
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                play.won! ? 'Won' : 'Lost',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: play.won! ? Colors.green[800] : Colors.red[800],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      subtitle: Text(
+                        'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.blue),
+                            onPressed: () => _editPlay(play),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => _deletePlay(play.id!),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _detailedGame ?? widget.game;
@@ -402,216 +834,125 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> {
                 ),
               ),
             ),
-          IconButton(
-            icon: const Icon(Icons.nfc),
-            onPressed: _writeToNfc,
-            tooltip: 'Write to NFC Tag',
-          ),
+          if (!_isLoadingDetails && widget.isOwned)
+            IconButton(
+              icon: const Icon(Icons.sync),
+              onPressed: _fetchGameDetails,
+              tooltip: 'Sync from BGG',
+            ),
+          if (widget.isOwned)
+            IconButton(
+              icon: const Icon(Icons.nfc),
+              onPressed: _writeToNfc,
+              tooltip: 'Write to NFC Tag',
+            ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Game Image
-            if (game.imageUrl != null)
-              CachedNetworkImage(
-                imageUrl: game.imageUrl!,
-                height: 300,
-                fit: BoxFit.contain,
-                placeholder: (context, url) => Container(
-                  height: 300,
-                  color: Colors.grey[300],
-                  child: const Center(child: CircularProgressIndicator()),
-                ),
-                errorWidget: (context, url, error) => Container(
-                  height: 300,
-                  color: Colors.grey[300],
-                  child: const Icon(Icons.casino, size: 64),
-                ),
-              )
-            else
-              Container(
-                height: 300,
-                color: Colors.grey[300],
-                child: const Icon(Icons.casino, size: 64),
-              ),
-
-            Padding(
+      body: Column(
+        children: [
+          // Not Owned Banner
+          if (!widget.isOwned)
+            Container(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              color: Colors.orange[100],
+              child: Row(
                 children: [
-                  // Title
-                  Text(
-                    game.name,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Basic Info
-                  if (game.yearPublished != null)
-                    _InfoRow(
-                      icon: Icons.calendar_today,
-                      label: 'Year Published',
-                      value: game.yearPublished.toString(),
-                    ),
-
-                  _InfoRow(
-                    icon: Icons.people,
-                    label: 'Players',
-                    value: game.playersInfo,
-                  ),
-
-                  _InfoRow(
-                    icon: Icons.access_time,
-                    label: 'Playtime',
-                    value: game.playtimeInfo,
-                  ),
-
-                  if (game.averageRating != null)
-                    _InfoRow(
-                      icon: Icons.star,
-                      label: 'Rating',
-                      value: game.averageRating!.toStringAsFixed(2),
-                    ),
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-
-                  // Location Editor
-                  LocationPicker(
-                    initialLocation: game.location,
-                    onLocationChanged: _saveLocation,
-                  ),
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-
-                  // Play Recording Section
-                  Text(
-                    'Play History',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _recordPlay,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Record Play'),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Play History List
-                  if (_isLoadingPlays)
-                    const Center(child: CircularProgressIndicator())
-                  else if (_plays.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: Text(
-                          'No plays recorded yet',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
+                  Icon(Icons.info_outline, color: Colors.orange[900]),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'This game is not in your collection',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange[900],
                       ),
-                    )
-                  else
-                    Column(
-                      children: _plays.map((play) {
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: play.won == null
-                                ? const Icon(Icons.event, color: Colors.blue)
-                                : play.won!
-                                    ? const Icon(Icons.emoji_events, color: Colors.amber)
-                                    : const Icon(Icons.event, color: Colors.grey),
-                            title: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
-                                    style: const TextStyle(fontWeight: FontWeight.w500),
-                                  ),
-                                ),
-                                if (play.won != null)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: play.won! ? Colors.green[100] : Colors.red[100],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      play.won! ? 'Won' : 'Lost',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: play.won! ? Colors.green[800] : Colors.red[800],
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Text(
-                              'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.delete, color: Colors.red),
-                              onPressed: () => _deletePlay(play.id!),
-                            ),
-                          ),
-                        );
-                      }).toList(),
                     ),
-
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 16),
-
-                  // Description
-                  if (game.description != null &&
-                      game.description!.isNotEmpty) ...[
-                    Text(
-                      'Description',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _stripHtmlTags(game.description!),
-                      style: const TextStyle(height: 1.5),
-                    ),
-                  ],
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+          // Game Image
+          if (game.imageUrl != null)
+            CachedNetworkImage(
+              imageUrl: game.imageUrl!,
+              height: 250,
+              fit: BoxFit.contain,
+              placeholder: (context, url) => Container(
+                height: 250,
+                color: Colors.grey[300],
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (context, url, error) => Container(
+                height: 250,
+                color: Colors.grey[300],
+                child: const Icon(Icons.casino, size: 64),
+              ),
+            )
+          else
+            Container(
+              height: 250,
+              color: Colors.grey[300],
+              child: const Icon(Icons.casino, size: 64),
+            ),
+
+          // Tabs
+          TabBar(
+            controller: _tabController,
+            labelColor: Theme.of(context).primaryColor,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Theme.of(context).primaryColor,
+            tabs: const [
+              Tab(text: 'Details'),
+              Tab(text: 'Play History'),
+            ],
+          ),
+
+          // Tab Views
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildDetailsTab(game),
+                _buildPlayHistoryTab(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   String _stripHtmlTags(String html) {
     return html.replaceAll(RegExp(r'<[^>]*>'), '').replaceAll('&quot;', '"');
+  }
+
+  Color _getColorForIndex(int index, bool isCategory) {
+    // Different color palettes for categories and mechanics
+    final categoryColors = [
+      Colors.blue,
+      Colors.green,
+      Colors.purple,
+      Colors.orange,
+      Colors.teal,
+      Colors.pink,
+      Colors.indigo,
+      Colors.cyan,
+    ];
+
+    final mechanicColors = [
+      Colors.red,
+      Colors.amber,
+      Colors.deepPurple,
+      Colors.deepOrange,
+      Colors.lime,
+      Colors.brown,
+      Colors.blueGrey,
+      Colors.lightGreen,
+    ];
+
+    final colors = isCategory ? categoryColors : mechanicColors;
+    return colors[index % colors.length];
   }
 }
 
@@ -651,5 +992,202 @@ class _InfoRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _TagChip extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _TagChip({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8, bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withAlpha(51), // 0.2 * 255 = 51
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color, width: 1),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          color: color.darken(0.3),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClickableTagChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ClickableTagChip({
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8, bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withAlpha(51), // 0.2 * 255 = 51
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color, width: 1),
+        ),
+        child: IntrinsicWidth(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: color.darken(0.3),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.arrow_forward,
+                size: 12,
+                color: color.darken(0.3),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpandableDescription extends StatefulWidget {
+  final String description;
+
+  const _ExpandableDescription({
+    required this.description,
+  });
+
+  @override
+  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.description,
+          maxLines: _isExpanded ? null : 2,
+          overflow: _isExpanded ? null : TextOverflow.ellipsis,
+          style: const TextStyle(height: 1.5),
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isExpanded = !_isExpanded;
+            });
+          },
+          child: Text(
+            _isExpanded ? 'Show less' : 'Show more',
+            style: TextStyle(
+              color: Theme.of(context).primaryColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ExpandableExpansions extends StatefulWidget {
+  final List<ExpansionReference> expansions;
+  final Function(int, String) onExpansionTap;
+
+  const _ExpandableExpansions({
+    required this.expansions,
+    required this.onExpansionTap,
+  });
+
+  @override
+  State<_ExpandableExpansions> createState() => _ExpandableExpansionsState();
+}
+
+class _ExpandableExpansionsState extends State<_ExpandableExpansions> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final shouldCollapse = widget.expansions.length > 3;
+    final displayedExpansions = shouldCollapse && !_isExpanded
+        ? widget.expansions.take(3).toList()
+        : widget.expansions;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          children: displayedExpansions.map((expansion) {
+            return _ClickableTagChip(
+              label: expansion.name,
+              color: Colors.blueGrey,
+              onTap: () => widget.onExpansionTap(expansion.bggId, expansion.name),
+            );
+          }).toList(),
+        ),
+        if (shouldCollapse) ...[
+          const SizedBox(height: 8),
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _isExpanded = !_isExpanded;
+              });
+            },
+            child: Text(
+              _isExpanded
+                  ? 'Show less'
+                  : 'Show ${widget.expansions.length - 3} more...',
+              style: TextStyle(
+                color: Theme.of(context).primaryColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+extension ColorExtension on Color {
+  Color darken(double amount) {
+    assert(amount >= 0 && amount <= 1);
+    final hsl = HSLColor.fromColor(this);
+    final darkened = hsl.withLightness((hsl.lightness - amount).clamp(0.0, 1.0));
+    return darkened.toColor();
   }
 }

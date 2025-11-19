@@ -1,113 +1,21 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'package:cookie_jar/cookie_jar.dart';
-import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:xml/xml.dart';
 import '../models/game.dart';
 
 class BggService {
   static const String _baseUrl = 'https://boardgamegeek.com/xmlapi2';
-  static const String _loginUrl = 'https://boardgamegeek.com/login/api/v1';
 
-  final CookieJar _cookieJar = CookieJar();
-  late final Dio _dio = _createDio();
-  bool _isAuthenticated = false;
+  // Store bearer token for API v2 authenticated requests
+  String? _bearerToken;
 
-  // Store credentials for auto-relogin
-  String? _storedUsername;
-  String? _storedPassword;
-
-  Dio _createDio() {
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(seconds: 30),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
-    ));
-
-    // Use Dio's built-in cookie manager
-    dio.interceptors.add(CookieManager(_cookieJar));
-
-    // Add logging interceptor to debug cookie issues
-    dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final cookies = await _cookieJar.loadForRequest(options.uri);
-        print('🍪 Cookies for ${options.uri}: ${cookies.map((c) => '${c.name}=${c.value}').join('; ')}');
-        return handler.next(options);
-      },
-      onResponse: (response, handler) async {
-        final setCookies = response.headers['set-cookie'];
-        if (setCookies != null) {
-          print('🍪 Set-Cookie received: $setCookies');
-        }
-        return handler.next(response);
-      },
-    ));
-
-    return dio;
+  /// Set bearer token for API v2 authenticated requests
+  void setBearerToken(String token) {
+    _bearerToken = token;
   }
 
-  /// Login to BGG with username and password
-  Future<bool> login(String username, String password) async {
-    if (username.isEmpty || password.isEmpty) {
-      throw Exception('Username and password are required');
-    }
-
-    try {
-      print('🔐 Attempting BGG login for user: $username');
-
-      // BGG uses the web login endpoint with JSON credentials
-      final response = await _dio.post(
-        _loginUrl,
-        data: {
-          'credentials': {
-            'username': username,
-            'password': password,
-          }
-        },
-        options: Options(
-          contentType: Headers.jsonContentType,
-          validateStatus: (status) => status! < 500,
-          followRedirects: true,
-        ),
-      );
-
-      print('🔐 Login response status: ${response.statusCode}');
-      print('🔐 Login response data: ${response.data}');
-
-      // Check if login was successful (200, 202, or 204 are all success)
-      if (response.statusCode == 200 || response.statusCode == 202 || response.statusCode == 204) {
-        // Check if response has error (only if there's data)
-        if (response.data is Map && response.data['errors'] != null) {
-          print('❌ Login failed: ${response.data['errors']}');
-          _isAuthenticated = false;
-          return false;
-        }
-
-        _isAuthenticated = true;
-        // Store credentials for auto-relogin
-        _storedUsername = username;
-        _storedPassword = password;
-        print('✅ Successfully logged in to BGG');
-        return true;
-      } else {
-        print('❌ Login failed with status ${response.statusCode}');
-        _isAuthenticated = false;
-        return false;
-      }
-    } catch (e) {
-      print('❌ Login error: $e');
-      _isAuthenticated = false;
-      return false;
-    }
-  }
-
-  /// Check if user is authenticated
-  bool get isAuthenticated => _isAuthenticated;
+  /// Check if bearer token is set
+  bool get hasToken => _bearerToken != null && _bearerToken!.isNotEmpty;
 
   /// Fetch collection for a given username
   Future<List<Game>> fetchCollection(String username, {int retryCount = 0}) async {
@@ -115,17 +23,31 @@ class BggService {
       throw Exception('Username cannot be empty');
     }
 
-    if (!_isAuthenticated) {
-      throw Exception('Please login to BGG first');
+    if (!hasToken) {
+      throw Exception('Please set your BGG API token in settings');
     }
 
     // Request collection
     final collectionUrl = '$_baseUrl/collection?username=$username&own=1';
 
     print('🔍 BGG API Request: $collectionUrl');
+    print('🔍 Using bearer token: ${_bearerToken != null}');
     print('🔍 Retry count: $retryCount');
 
-    final response = await _dio.get(
+    // Create headers with bearer token
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/xml',
+      'Authorization': 'Bearer $_bearerToken',
+    };
+
+    final dio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: headers,
+    ));
+
+    final response = await dio.get(
       collectionUrl,
       options: Options(
         validateStatus: (status) => status! < 500,
@@ -133,7 +55,6 @@ class BggService {
     );
 
     print('📡 Response Status: ${response.statusCode}');
-    print('📡 Response Headers: ${response.headers}');
 
     if (response.statusCode == 202) {
       // Collection is being processed, wait and retry
@@ -146,8 +67,7 @@ class BggService {
     }
 
     if (response.statusCode == 401) {
-      _isAuthenticated = false;
-      throw Exception('Authentication expired. Please login again.');
+      throw Exception('Invalid API token. Please check your settings.');
     }
 
     if (response.statusCode != 200) {
@@ -180,7 +100,7 @@ class BggService {
   }
 
   /// Fetch detailed information for multiple games
-  /// This is a PUBLIC endpoint - create new Dio instance without cookies
+  /// Uses bearer token if available for authenticated requests
   Future<List<Game>> _fetchGameDetails(List<String?> gameIds, {int retryCount = 0}) async {
     if (gameIds.isEmpty) return [];
 
@@ -188,16 +108,24 @@ class BggService {
     final idsString = gameIds.join(',');
     final detailsUrl = '$_baseUrl/thing?id=$idsString&stats=1';
 
-    print('🔍 BGG API Details Request: $detailsUrl (no auth)');
+    print('🔍 BGG API Details Request: $detailsUrl');
+    print('🔍 Using bearer token: ${_bearerToken != null}');
 
-    // Create a clean Dio instance WITHOUT any cookies or auth
+    // Create a Dio instance with bearer token if available
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/xml',
+    };
+
+    // Add bearer token if available
+    if (_bearerToken != null) {
+      headers['Authorization'] = 'Bearer $_bearerToken';
+    }
+
     final cleanDio = Dio(BaseOptions(
       connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/xml',
-      },
+      headers: headers,
     ));
 
     final response = await cleanDio.get(
@@ -220,8 +148,7 @@ class BggService {
     }
 
     if (response.statusCode == 401) {
-      _isAuthenticated = false;
-      throw Exception('Authentication expired. Please login again.');
+      throw Exception('Invalid API token. Please check your settings.');
     }
 
     if (response.statusCode != 200) {
@@ -346,6 +273,46 @@ class BggService {
       }
     }
 
+    // Get categories
+    final categoryLinks = item.findElements('link')
+        .where((link) => link.getAttribute('type') == 'boardgamecategory');
+    final categories = categoryLinks
+        .map((link) => link.getAttribute('value'))
+        .whereType<String>()
+        .toList();
+
+    // Get mechanics
+    final mechanicLinks = item.findElements('link')
+        .where((link) => link.getAttribute('type') == 'boardgamemechanic');
+    final mechanics = mechanicLinks
+        .map((link) => link.getAttribute('value'))
+        .whereType<String>()
+        .toList();
+
+    // Get expansions
+    final expansionLinks = item.findElements('link')
+        .where((link) => link.getAttribute('type') == 'boardgameexpansion');
+
+    ExpansionReference? baseGame;
+    List<ExpansionReference>? expansions;
+
+    for (final link in expansionLinks) {
+      final isInbound = link.getAttribute('inbound') == 'true';
+      final expansionId = int.tryParse(link.getAttribute('id') ?? '');
+      final expansionName = link.getAttribute('value');
+
+      if (expansionId != null && expansionName != null) {
+        if (isInbound) {
+          // This game is an expansion of the linked game
+          baseGame = ExpansionReference(bggId: expansionId, name: expansionName);
+        } else {
+          // The linked game is an expansion of this game
+          expansions ??= [];
+          expansions.add(ExpansionReference(bggId: expansionId, name: expansionName));
+        }
+      }
+    }
+
     return Game(
       bggId: bggId,
       name: primaryName,
@@ -358,45 +325,89 @@ class BggService {
       minPlaytime: minPlaytime,
       maxPlaytime: maxPlaytime,
       averageRating: averageRating,
+      categories: categories.isNotEmpty ? categories : null,
+      mechanics: mechanics.isNotEmpty ? mechanics : null,
+      baseGame: baseGame,
+      expansions: expansions,
       lastSynced: DateTime.now(),
     );
   }
 
-  /// Fetch detailed information for a single game by BGG ID
-  /// Requires authentication and will auto-retry with re-login on 401
-  Future<Game> fetchGameDetails(int bggId, {bool isRetry = false}) async {
-    if (!_isAuthenticated && !isRetry) {
-      // Try auto-relogin if we have stored credentials
-      if (_storedUsername != null && _storedPassword != null) {
-        print('🔄 Not authenticated, attempting auto-relogin...');
-        final loginSuccess = await login(_storedUsername!, _storedPassword!);
-        if (!loginSuccess) {
-          throw Exception('Please login to BGG first');
-        }
-        return fetchGameDetails(bggId, isRetry: true);
-      }
-      throw Exception('Please login to BGG first');
+  /// Search for games on BGG by name
+  /// Returns a list of search results with BGG ID and name
+  Future<List<Map<String, dynamic>>> searchGames(String query) async {
+    if (query.isEmpty) return [];
+
+    final searchUrl = '$_baseUrl/search?query=${Uri.encodeComponent(query)}&type=boardgame,boardgameexpansion';
+
+    print('🔍 BGG Search Request: $searchUrl');
+    print('🔍 Using bearer token: ${_bearerToken != null}');
+
+    // Create headers with bearer token if available
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/xml',
+    };
+
+    // Add bearer token if available
+    if (_bearerToken != null) {
+      headers['Authorization'] = 'Bearer $_bearerToken';
     }
 
-    try {
-      final games = await _fetchGameDetails([bggId.toString()]);
-      if (games.isEmpty) {
-        throw Exception('Game not found with ID: $bggId');
-      }
-      return games.first;
-    } catch (e) {
-      // If we get a 401 error and haven't retried yet, try to re-login
-      if (e.toString().contains('Authentication expired') && !isRetry) {
-        if (_storedUsername != null && _storedPassword != null) {
-          print('🔄 Session expired, attempting auto-relogin...');
-          final loginSuccess = await login(_storedUsername!, _storedPassword!);
-          if (loginSuccess) {
-            print('✅ Auto-relogin successful, retrying fetch...');
-            return fetchGameDetails(bggId, isRetry: true);
-          }
-        }
-      }
-      rethrow;
+    final cleanDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: headers,
+    ));
+
+    final response = await cleanDio.get(
+      searchUrl,
+      options: Options(
+        validateStatus: (status) => status! < 500,
+      ),
+    );
+
+    print('📡 Search Response Status: ${response.statusCode}');
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to search games: ${response.statusCode}');
     }
+
+    final document = XmlDocument.parse(response.data.toString());
+    final items = document.findAllElements('item');
+
+    final results = <Map<String, dynamic>>[];
+    for (final item in items) {
+      final id = int.tryParse(item.getAttribute('id') ?? '');
+      final nameElement = item.findElements('name').firstOrNull;
+      final name = nameElement?.getAttribute('value');
+      final yearElement = item.findElements('yearpublished').firstOrNull;
+      final year = yearElement?.getAttribute('value');
+
+      if (id != null && name != null) {
+        results.add({
+          'id': id,
+          'name': name,
+          'year': year != null ? int.tryParse(year) : null,
+        });
+      }
+    }
+
+    print('✅ Found ${results.length} search results');
+    return results;
+  }
+
+  /// Fetch detailed information for a single game by BGG ID
+  /// Uses bearer token for authentication
+  Future<Game> fetchGameDetails(int bggId) async {
+    if (!hasToken) {
+      throw Exception('Please set your BGG API token in settings');
+    }
+
+    final games = await _fetchGameDetails([bggId.toString()]);
+    if (games.isEmpty) {
+      throw Exception('Game not found with ID: $bggId');
+    }
+    return games.first;
   }
 }

@@ -12,7 +12,16 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
 });
 
 final bggServiceProvider = Provider<BggService>((ref) {
-  return BggService();
+  final service = BggService();
+  // Load API token from shared preferences
+  final prefs = ref.watch(sharedPreferencesProvider);
+  prefs.whenData((p) {
+    final token = p.getString('bgg_api_token') ?? '';
+    if (token.isNotEmpty) {
+      service.setBearerToken(token);
+    }
+  });
+  return service;
 });
 
 final nfcServiceProvider = Provider<NfcService>((ref) {
@@ -34,10 +43,10 @@ final bggUsernameProvider = StateProvider<String>((ref) {
   );
 });
 
-// BGG Password Provider
-final bggPasswordProvider = FutureProvider<String>((ref) async {
+// BGG API Token Provider
+final bggApiTokenProvider = FutureProvider<String>((ref) async {
   final prefs = await ref.watch(sharedPreferencesProvider.future);
-  return prefs.getString('bgg_password') ?? '';
+  return prefs.getString('bgg_api_token') ?? '';
 });
 
 // Games List Provider
@@ -63,28 +72,22 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
     }
   }
 
-  Future<void> syncFromBgg(String username, String password) async {
+  Future<void> syncFromBgg(String username, String apiToken) async {
     if (username.isEmpty) {
       throw Exception('Username is required');
     }
 
-    if (password.isEmpty) {
-      throw Exception('Password is required for BGG authentication');
+    if (apiToken.isEmpty) {
+      throw Exception('API token is required. Please set it in settings.');
     }
 
     try {
       final bggService = ref.read(bggServiceProvider);
       final db = ref.read(databaseServiceProvider);
 
-      // Login to BGG first
-      print('🔐 Logging in to BGG...');
-      final loginSuccess = await bggService.login(username, password);
-
-      if (!loginSuccess) {
-        throw Exception('Failed to login to BGG. Please check your username and password.');
-      }
-
-      print('✅ Successfully logged in to BGG');
+      // Set the API token
+      bggService.setBearerToken(apiToken);
+      print('🔑 Using API token for BGG authentication');
 
       // Fetch games from BGG
       final bggGames = await bggService.fetchCollection(username);
@@ -132,23 +135,51 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
   }
 }
 
+// Expansion Filter Options
+enum ExpansionFilter {
+  baseGames,      // Default - show only base games and standalone games (no expansions)
+  onlyExpansions, // Show only expansions
+  all,            // Show everything
+}
+
 // Search Query Provider
 final searchQueryProvider = StateProvider<String>((ref) => '');
+
+// Expansion Filter Provider
+final expansionFilterProvider = StateProvider<ExpansionFilter>((ref) => ExpansionFilter.baseGames);
 
 // Filtered Games Provider
 final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
-
-  if (query.isEmpty) {
-    return games;
-  }
+  final expansionFilter = ref.watch(expansionFilterProvider);
 
   return games.when(
     data: (gamesList) {
-      final filtered = gamesList
-          .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
-          .toList();
+      // Apply expansion filter
+      var filtered = gamesList;
+
+      switch (expansionFilter) {
+        case ExpansionFilter.baseGames:
+          // Show only games that are NOT expansions (baseGame is null)
+          filtered = filtered.where((game) => game.baseGame == null).toList();
+          break;
+        case ExpansionFilter.onlyExpansions:
+          // Show only expansions (games with a baseGame)
+          filtered = filtered.where((game) => game.baseGame != null).toList();
+          break;
+        case ExpansionFilter.all:
+          // No filtering
+          break;
+      }
+
+      // Apply search filter
+      if (query.isNotEmpty) {
+        filtered = filtered
+            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+
       return AsyncValue.data(filtered);
     },
     loading: () => const AsyncValue.loading(),

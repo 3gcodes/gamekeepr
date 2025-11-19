@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,23 +15,26 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _usernameController;
-  late TextEditingController _passwordController;
+  late TextEditingController _apiTokenController;
   bool _isSaving = false;
-  bool _obscurePassword = true;
+  bool _obscureToken = true;
 
   @override
   void initState() {
     super.initState();
+    // Initialize controllers immediately to avoid late initialization errors
+    _usernameController = TextEditingController();
+    _apiTokenController = TextEditingController();
     _loadCredentials();
   }
 
   Future<void> _loadCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString('bgg_username') ?? '';
-    final password = prefs.getString('bgg_password') ?? '';
+    final apiToken = prefs.getString('bgg_api_token') ?? '';
 
-    _usernameController = TextEditingController(text: username);
-    _passwordController = TextEditingController(text: password);
+    _usernameController.text = username;
+    _apiTokenController.text = apiToken;
 
     if (mounted) {
       setState(() {});
@@ -42,7 +44,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   void dispose() {
     _usernameController.dispose();
-    _passwordController.dispose();
+    _apiTokenController.dispose();
     super.dispose();
   }
 
@@ -54,7 +56,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('bgg_username', _usernameController.text.trim());
-      await prefs.setString('bgg_password', _passwordController.text.trim());
+      await prefs.setString('bgg_api_token', _apiTokenController.text.trim());
 
       // Update provider
       ref.read(bggUsernameProvider.notifier).state = _usernameController.text.trim();
@@ -62,7 +64,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Credentials saved'),
+            content: Text('Settings saved'),
             backgroundColor: Colors.green,
           ),
         );
@@ -71,7 +73,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving credentials: $e'),
+            content: Text('Error saving settings: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -290,22 +292,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
+                  controller: _apiTokenController,
+                  obscureText: _obscureToken,
                   decoration: InputDecoration(
-                    labelText: 'BGG Password',
-                    hintText: 'Enter your BGG password',
+                    labelText: 'BGG API Token',
+                    hintText: 'Enter your BGG API token',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    prefixIcon: const Icon(Icons.lock),
+                    prefixIcon: const Icon(Icons.key),
                     suffixIcon: IconButton(
                       icon: Icon(
-                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                        _obscureToken ? Icons.visibility : Icons.visibility_off,
                       ),
                       onPressed: () {
                         setState(() {
-                          _obscurePassword = !_obscurePassword;
+                          _obscureToken = !_obscureToken;
                         });
                       },
                     ),
@@ -323,7 +325,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.save),
-                    label: Text(_isSaving ? 'Saving...' : 'Save Credentials'),
+                    label: Text(_isSaving ? 'Saving...' : 'Save Settings'),
                   ),
                 ),
               ],

@@ -1,3 +1,29 @@
+import 'dart:convert';
+
+class ExpansionReference {
+  final int bggId;
+  final String name;
+
+  ExpansionReference({
+    required this.bggId,
+    required this.name,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'bggId': bggId,
+      'name': name,
+    };
+  }
+
+  factory ExpansionReference.fromMap(Map<String, dynamic> map) {
+    return ExpansionReference(
+      bggId: map['bggId'] as int,
+      name: map['name'] as String,
+    );
+  }
+}
+
 class Game {
   final int? id; // Local database ID
   final int bggId; // Board Game Geek ID
@@ -13,6 +39,10 @@ class Game {
   final double? averageRating;
   final String? location; // Shelf location as generic string
   final DateTime? lastSynced;
+  final List<String>? categories;
+  final List<String>? mechanics;
+  final ExpansionReference? baseGame; // If this is an expansion, reference to base game
+  final List<ExpansionReference>? expansions; // If this is a base game, list of expansions
 
   Game({
     this.id,
@@ -29,6 +59,10 @@ class Game {
     this.averageRating,
     this.location,
     this.lastSynced,
+    this.categories,
+    this.mechanics,
+    this.baseGame,
+    this.expansions,
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +81,10 @@ class Game {
       'average_rating': averageRating,
       'location': location,
       'last_synced': lastSynced?.toIso8601String(),
+      'categories': categories != null ? jsonEncode(categories) : null,
+      'mechanics': mechanics != null ? jsonEncode(mechanics) : null,
+      'base_game': baseGame != null ? jsonEncode(baseGame!.toMap()) : null,
+      'expansions': expansions != null ? jsonEncode(expansions!.map((e) => e.toMap()).toList()) : null,
     };
   }
 
@@ -68,6 +106,20 @@ class Game {
       lastSynced: map['last_synced'] != null
           ? DateTime.parse(map['last_synced'] as String)
           : null,
+      categories: map['categories'] != null
+          ? List<String>.from(jsonDecode(map['categories'] as String))
+          : null,
+      mechanics: map['mechanics'] != null
+          ? List<String>.from(jsonDecode(map['mechanics'] as String))
+          : null,
+      baseGame: map['base_game'] != null
+          ? ExpansionReference.fromMap(jsonDecode(map['base_game'] as String))
+          : null,
+      expansions: map['expansions'] != null
+          ? (jsonDecode(map['expansions'] as String) as List)
+              .map((e) => ExpansionReference.fromMap(e as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -86,6 +138,10 @@ class Game {
     double? averageRating,
     String? location,
     DateTime? lastSynced,
+    List<String>? categories,
+    List<String>? mechanics,
+    ExpansionReference? baseGame,
+    List<ExpansionReference>? expansions,
   }) {
     return Game(
       id: id ?? this.id,
@@ -102,6 +158,10 @@ class Game {
       averageRating: averageRating ?? this.averageRating,
       location: location ?? this.location,
       lastSynced: lastSynced ?? this.lastSynced,
+      categories: categories ?? this.categories,
+      mechanics: mechanics ?? this.mechanics,
+      baseGame: baseGame ?? this.baseGame,
+      expansions: expansions ?? this.expansions,
     );
   }
 

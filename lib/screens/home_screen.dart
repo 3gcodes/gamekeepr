@@ -5,11 +5,13 @@ import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
 import '../models/game.dart';
 import '../models/game_with_play_info.dart';
+import '../widgets/filter_bottom_sheet.dart';
 import 'game_details_screen.dart';
 import 'settings_screen.dart';
 import 'nfc_scan_screen.dart';
 import 'nfc_record_play_screen.dart';
 import 'write_shelf_tag_screen.dart';
+import 'bgg_search_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -42,7 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please set your BGG credentials in settings'),
+            content: Text('Please set your BGG username in settings'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -50,15 +52,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
 
-    // Get password from shared preferences directly
+    // Get API token from shared preferences directly
     final prefs = await ref.read(sharedPreferencesProvider.future);
-    final password = prefs.getString('bgg_password') ?? '';
+    final apiToken = prefs.getString('bgg_api_token') ?? '';
 
-    if (password.isEmpty) {
+    if (apiToken.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Please set your BGG password in settings'),
+            content: Text('Please set your BGG API token in settings'),
             backgroundColor: Colors.orange,
           ),
         );
@@ -107,7 +109,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(syncStatusProvider.notifier).state = SyncStatus.syncing;
 
     try {
-      await ref.read(gamesProvider.notifier).syncFromBgg(username, password);
+      await ref.read(gamesProvider.notifier).syncFromBgg(username, apiToken);
       ref.read(syncStatusProvider.notifier).state = SyncStatus.success;
 
       // Close the progress dialog
@@ -144,6 +146,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => const FilterBottomSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentTab = ref.watch(currentViewTabProvider);
@@ -151,11 +164,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final filteredRecentlyPlayed = ref.watch(filteredRecentlyPlayedGamesProvider);
     final syncStatus = ref.watch(syncStatusProvider);
     final isSyncing = syncStatus == SyncStatus.syncing;
+    final expansionFilter = ref.watch(expansionFilterProvider);
+    final hasActiveFilters = expansionFilter != ExpansionFilter.baseGames;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(currentTab == 0 ? 'Game Keepr' : 'Recently Played'),
         actions: [
+          // Filter button - only show on Collection tab
+          if (currentTab == 0)
+            IconButton(
+              icon: Badge(
+                isLabelVisible: hasActiveFilters,
+                child: const Icon(Icons.filter_list),
+              ),
+              onPressed: _showFilterBottomSheet,
+              tooltip: 'Filter',
+            ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.nfc),
             tooltip: 'NFC Options',
@@ -320,6 +345,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       fontSize: 14,
                       color: Colors.grey[500],
                     ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BggSearchScreen(
+                            initialQuery: _searchController.text,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.search),
+                    label: const Text('Search BGG'),
                   ),
                 ],
               ],
@@ -586,6 +627,8 @@ class _RecentlyPlayedGameListItem extends StatelessWidget {
     final game = gameWithPlayInfo.game;
     final lastPlayed = gameWithPlayInfo.lastPlayed;
     final playCount = gameWithPlayInfo.playCount;
+    final wins = gameWithPlayInfo.wins;
+    final losses = gameWithPlayInfo.losses;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -668,6 +711,17 @@ class _RecentlyPlayedGameListItem extends StatelessWidget {
                             color: Colors.grey[600],
                           ),
                         ),
+                        if (wins > 0 || losses > 0) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '($wins-$losses)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
                         const SizedBox(width: 16),
                         Icon(Icons.people, size: 14, color: Colors.grey[600]),
                         const SizedBox(width: 4),
@@ -707,3 +761,4 @@ class _RecentlyPlayedGameListItem extends StatelessWidget {
     );
   }
 }
+

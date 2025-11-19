@@ -23,7 +23,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -45,7 +45,11 @@ class DatabaseService {
         max_playtime INTEGER,
         average_rating REAL,
         location TEXT,
-        last_synced TEXT
+        last_synced TEXT,
+        categories TEXT,
+        mechanics TEXT,
+        base_game TEXT,
+        expansions TEXT
       )
     ''');
 
@@ -108,6 +112,26 @@ class DatabaseService {
       // Add won column for version 3
       await db.execute('''
         ALTER TABLE plays ADD COLUMN won INTEGER
+      ''');
+    }
+
+    if (oldVersion < 4) {
+      // Add categories and mechanics columns for version 4
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN categories TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN mechanics TEXT
+      ''');
+    }
+
+    if (oldVersion < 5) {
+      // Add base_game and expansions columns for version 5
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN base_game TEXT
+      ''');
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN expansions TEXT
       ''');
     }
   }
@@ -283,6 +307,17 @@ class DatabaseService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
+  /// Update a play record
+  Future<void> updatePlay(Play play) async {
+    final db = await database;
+    await db.update(
+      'plays',
+      play.toMap(),
+      where: 'id = ?',
+      whereArgs: [play.id],
+    );
+  }
+
   /// Delete a play record
   Future<void> deletePlay(int playId) async {
     final db = await database;
@@ -310,7 +345,9 @@ class DatabaseService {
       SELECT
         g.*,
         MAX(p.date_played) as last_played,
-        COUNT(p.id) as play_count
+        COUNT(p.id) as play_count,
+        SUM(CASE WHEN p.won = 1 THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN p.won = 0 THEN 1 ELSE 0 END) as losses
       FROM games g
       INNER JOIN plays p ON g.id = p.game_id
       GROUP BY g.id
