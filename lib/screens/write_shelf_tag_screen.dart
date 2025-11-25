@@ -136,7 +136,7 @@ class _WriteShelfTagScreenState extends ConsumerState<WriteShelfTagScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _selectedShelf,
+              initialValue: _selectedShelf,
               decoration: InputDecoration(
                 labelText: 'Shelf',
                 border: OutlineInputBorder(

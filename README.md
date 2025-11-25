@@ -1,144 +1,210 @@
 # Game Keepr
 
-A mobile Flutter application for tracking your board game collection with NFC support.
+A mobile Flutter application for managing your board game collection with NFC tag support, BoardGameGeek integration, and shelf location tracking.
 
 ## Features
 
-- **BGG Integration**: Sync your board game collection from BoardGameGeek
-- **Local Storage**: SQLite database for offline access to your collection
-- **NFC Support**: Write game IDs to NFC tags and scan tags to view game details
-- **Location Tracking**: Track where each game is stored (custom text field)
-- **Search**: Search through your collection by game name
-- **Game Details**: View detailed information including:
-  - Game images
-  - Year published
-  - Player count
-  - Playtime
-  - BGG rating
-  - Description
-  - Custom location
+### BoardGameGeek Integration
+- **Collection Sync**: Import your board game collection from BoardGameGeek using their API v2
+- **BGG Search**: Search the entire BGG database to add games not in your collection
+- **Game Details**: View comprehensive game information including description, categories, mechanics, and expansions
+- **API Token Auth**: Secure authentication using BGG API tokens
 
-## Setup
+### Collection Management
+- **Multiple Views**:
+  - **Collection**: View your owned games
+  - **All Games**: See all games in your database (owned and wishlist)
+  - **Recently Played**: Quick access to games you've played, sorted by last play date
+- **Smart Filtering**: Filter by base games only, expansions only, or show all
+- **Search**: Fast local search across your entire collection
+- **Wishlist**: Mark games you want to add to your collection
+
+### Physical Location Tracking
+- **Shelf & Bay System**: Track game locations using a shelf/bay format (e.g., "A1" = Shelf A, Bay 1)
+- **Visual Location Picker**: Easy-to-use grid picker for selecting locations
+- **Shelf View**: See all games on a specific shelf, grouped by bay
+- **NFC Shelf Tags**: Write shelf locations to NFC tags for quick navigation
+
+### NFC Tag Support
+- **Game Tags**: Write game IDs to NFC tags in your game boxes
+- **Quick Scan**: Scan any tagged game box to instantly view its details
+- **Record Play via NFC**: Scan a game tag to quickly record a play session
+- **Shelf Navigation**: Scan shelf tags to view all games in that location
+
+### Play Tracking
+- **Record Plays**: Log when you play each game with date selection
+- **Win/Loss Tracking**: Track your wins and losses for competitive games
+- **Play History**: View complete play history for each game
+- **Edit & Delete**: Modify or remove play records as needed
+- **Statistics**: See play count and win/loss record in the recently played view
+
+### Game Scheduling
+- **Schedule Sessions**: Plan future game sessions with date, time, and location
+- **Edit & Delete**: Modify or cancel scheduled sessions
+- **Share Invites**: Generate shareable game night invite images
+
+### Data Management
+- **Offline First**: Full SQLite database for offline access to your collection
+- **Export Backup**: Create database backups to save to iCloud Drive or Files
+- **Restore Backup**: Restore your collection from a backup file
+- **Image Caching**: Game images cached for offline viewing
+
+## Screenshots
+
+*Coming soon*
+
+## Requirements
+
+- iOS 13.0 or higher
+- iPhone 7 or newer (for NFC hardware)
+- BoardGameGeek account
+- BGG API token (for collection sync)
+
+## Installation
 
 ### Prerequisites
 
-- Flutter SDK (3.0.0 or higher)
-- iOS device with NFC capability (iPhone 7 or newer)
-- Xcode for iOS development
-- BoardGameGeek account
+- Flutter SDK 3.0.0 or higher
+- Xcode (for iOS development)
+- CocoaPods
 
-### Installation
+### Setup
 
-1. Clone the repository
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/gamekeepr.git
+   cd gamekeepr
+   ```
+
 2. Install dependencies:
    ```bash
    flutter pub get
    ```
 
-3. For iOS, ensure you have the proper entitlements:
-   - NFC Tag Reading capability must be enabled in Xcode
-   - Info.plist already includes NFC configuration
+3. Install iOS dependencies:
+   ```bash
+   cd ios && pod install && cd ..
+   ```
 
 4. Run the app:
    ```bash
    flutter run
    ```
 
-## Usage
+### iOS Configuration
+
+The app requires NFC capabilities. These are already configured in the project:
+
+- NFC Tag Reading capability is enabled in the Xcode project
+- `Info.plist` includes required NFC usage descriptions
+
+## Getting Started
 
 ### Initial Setup
 
-1. Open the app and navigate to Settings (gear icon)
-2. Enter your BoardGameGeek username
-3. Tap "Save Username"
-4. Return to the home screen and tap the sync button (circular arrows)
-5. Wait for your collection to sync (this may take a few minutes for large collections)
+1. Open the app and go to **Settings** (gear icon in the navigation drawer)
+2. Enter your **BoardGameGeek username**
+3. Enter your **BGG API token** (obtain from BGG account settings)
+4. Tap **Save Settings**
+5. Return to the home screen and tap the **sync button** to import your collection
 
-### Viewing Games
+### Using NFC Tags
 
-- Browse your collection on the home screen
-- Use the search bar to find specific games
-- Tap any game to view detailed information
+#### Writing Game Tags
+1. Open a game's details screen
+2. Tap the **NFC icon** in the app bar
+3. Hold your iPhone near an NFC tag
+4. Wait for the success confirmation
+
+#### Scanning Game Tags
+1. From the home screen, tap the **NFC menu** (NFC icon)
+2. Select **Scan Tag**
+3. Hold your iPhone near a tagged game box
+4. The game's details screen will open automatically
+
+#### Recording Plays via NFC
+1. Tap the **NFC menu** and select **Record Play**
+2. Scan a game's NFC tag
+3. Select the date and win/loss status
+4. Save the play record
 
 ### Managing Locations
 
-1. Tap on a game to open its details
-2. Enter a location in the "Location" field (e.g., "Shelf B, Bay 8")
-3. Tap "Save Location"
-4. The location will appear in the game list
-
-### Using NFC
-
-#### Writing to NFC Tags
-
 1. Open a game's details screen
-2. Tap the NFC icon in the app bar
-3. Hold your phone near an NFC tag
-4. Wait for confirmation that the write was successful
+2. Scroll to the **Set Location** section
+3. Use the grid picker to select shelf (A-H) and bay (1-8)
+4. Location saves automatically
 
-#### Reading NFC Tags
+### Viewing Shelf Contents
 
-1. From the home screen, tap the NFC icon
-2. Hold your phone near a tagged game box
-3. The app will automatically open that game's details screen
-
-### Syncing
-
-- Tap the sync button on the home screen to update your collection
-- The sync will:
-  - Add new games from your BGG collection
-  - Update existing game information
-  - Preserve your custom location data
+1. Scan a shelf NFC tag, or
+2. Navigate to a game with a location set and tap the location badge
 
 ## Technical Details
 
 ### Architecture
 
-- **State Management**: RiverPod
-- **Local Database**: SQLite (via sqflite)
-- **HTTP Client**: http package for BGG API calls
+- **Framework**: Flutter
+- **State Management**: Riverpod
+- **Local Database**: SQLite (sqflite)
+- **HTTP Client**: Dio with cookie management
 - **NFC**: nfc_manager package
 - **Image Caching**: cached_network_image
 
-### Data Storage
+### Project Structure
 
-- Games are stored in a local SQLite database
-- BGG username is stored in SharedPreferences
-- Images are cached for offline viewing (hybrid mode)
+```
+lib/
+├── models/           # Data models (Game, Play, ScheduledGame)
+├── providers/        # Riverpod providers and state management
+├── screens/          # UI screens
+├── services/         # Business logic (Database, BGG API, NFC)
+├── widgets/          # Reusable UI components
+└── constants/        # App constants
+```
 
-### BGG API
+### BGG API Integration
 
-The app uses BoardGameGeek's XML API v2 to fetch collection data:
-- Collection endpoint: `/xmlapi2/collection`
-- Thing endpoint: `/xmlapi2/thing` for detailed game information
-
-## Requirements
-
-- iOS 13.0 or higher (for NFC support)
-- iPhone 7 or newer (for NFC hardware)
-- Internet connection for syncing (offline browsing supported)
+The app uses BoardGameGeek's XML API v2:
+- Collection endpoint: `/xmlapi2/collection` - Fetch user's game collection
+- Thing endpoint: `/xmlapi2/thing` - Get detailed game information
 
 ## Troubleshooting
 
-### NFC Not Working
+### NFC Issues
 
-- Ensure your device supports NFC (iPhone 7 or newer)
-- Check that NFC is enabled in device settings
-- Make sure the app has necessary permissions in iOS Settings
+- **NFC not working**: Ensure you have iPhone 7 or newer
+- **Tag not recognized**: Make sure the tag was written by this app
+- **Write failed**: Try holding the phone still and closer to the tag
 
-### Sync Failing
+### Sync Problems
 
-- Verify your BGG username is correct
-- Check your internet connection
-- BGG API may be slow - try again after a few minutes
-- Large collections may take several minutes to sync
+- **Authentication failed**: Verify your BGG API token is correct
+- **Empty collection**: Check that games in BGG are marked as "owned"
+- **Slow sync**: Large collections may take several minutes; BGG API has rate limits
 
-### Games Not Showing
+### Data Issues
 
-- Ensure you've synced at least once
-- Check that your BGG collection is set to "own" the games
-- Try clearing data and re-syncing (Settings > Clear All Data)
+- **Games missing**: Try syncing again from the home screen
+- **Corrupted data**: Use Settings > Clear All Data, then re-sync
+- **Lost data**: Restore from a backup file in Settings
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 
-This project is provided as-is for personal use.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- [BoardGameGeek](https://boardgamegeek.com) for their comprehensive game database and API
+- The Flutter and Dart teams for an excellent framework
+- All the board game enthusiasts who inspired this project

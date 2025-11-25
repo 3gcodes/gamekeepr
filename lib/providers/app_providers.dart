@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game.dart';
 import '../models/game_with_play_info.dart';
+import '../models/scheduled_game.dart';
 import '../services/database_service.dart';
 import '../services/bgg_service.dart';
 import '../services/nfc_service.dart';
@@ -12,16 +13,7 @@ final databaseServiceProvider = Provider<DatabaseService>((ref) {
 });
 
 final bggServiceProvider = Provider<BggService>((ref) {
-  final service = BggService();
-  // Load API token from shared preferences
-  final prefs = ref.watch(sharedPreferencesProvider);
-  prefs.whenData((p) {
-    final token = p.getString('bgg_api_token') ?? '';
-    if (token.isNotEmpty) {
-      service.setBearerToken(token);
-    }
-  });
-  return service;
+  return BggService();
 });
 
 final nfcServiceProvider = Provider<NfcService>((ref) {
@@ -133,6 +125,43 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
     final db = ref.read(databaseServiceProvider);
     return await db.getGameByBggId(bggId);
   }
+
+  /// Save a game from BGG search to the local database (not owned)
+  /// If the game already exists, returns the existing game without modification
+  Future<Game> saveGameFromBggSearch(Game game) async {
+    final db = ref.read(databaseServiceProvider);
+
+    // Check if game already exists
+    final existingGame = await db.getGameByBggId(game.bggId);
+    if (existingGame != null) {
+      return existingGame;
+    }
+
+    // Insert new game with owned = false
+    final gameToSave = game.copyWith(owned: false);
+    final savedGame = await db.insertGame(gameToSave);
+
+    // Reload games list
+    await loadGames();
+
+    return savedGame;
+  }
+
+  /// Toggle the wishlist status of a game
+  Future<Game?> toggleWishlist(int gameId, bool wishlisted) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.updateGameWishlisted(gameId, wishlisted);
+    await loadGames();
+    return await db.getGameById(gameId);
+  }
+
+  /// Toggle the owned status of a game
+  Future<Game?> toggleOwned(int gameId, bool owned) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.updateGameOwned(gameId, owned);
+    await loadGames();
+    return await db.getGameById(gameId);
+  }
 }
 
 // Expansion Filter Options
@@ -148,7 +177,7 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 // Expansion Filter Provider
 final expansionFilterProvider = StateProvider<ExpansionFilter>((ref) => ExpansionFilter.baseGames);
 
-// Filtered Games Provider
+// Filtered Games Provider (Collection - owned games only)
 final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
@@ -156,9 +185,10 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
 
   return games.when(
     data: (gamesList) {
-      // Apply expansion filter
-      var filtered = gamesList;
+      // First, filter to only show owned games in collection
+      var filtered = gamesList.where((game) => game.owned).toList();
 
+      // Apply expansion filter
       switch (expansionFilter) {
         case ExpansionFilter.baseGames:
           // Show only games that are NOT expansions (baseGame is null)
@@ -172,6 +202,70 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
           // No filtering
           break;
       }
+
+      // Apply search filter
+      if (query.isNotEmpty) {
+        filtered = filtered
+            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+
+      return AsyncValue.data(filtered);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
+});
+
+// All Games Provider (all games - owned and not owned)
+final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
+  final games = ref.watch(gamesProvider);
+  final query = ref.watch(searchQueryProvider);
+  final expansionFilter = ref.watch(expansionFilterProvider);
+
+  return games.when(
+    data: (gamesList) {
+      // Show all games (owned and not owned)
+      var filtered = gamesList;
+
+      // Apply expansion filter
+      switch (expansionFilter) {
+        case ExpansionFilter.baseGames:
+          // Show only games that are NOT expansions (baseGame is null)
+          filtered = filtered.where((game) => game.baseGame == null).toList();
+          break;
+        case ExpansionFilter.onlyExpansions:
+          // Show only expansions (games with a baseGame)
+          filtered = filtered.where((game) => game.baseGame != null).toList();
+          break;
+        case ExpansionFilter.all:
+          // No filtering
+          break;
+      }
+
+      // Apply search filter
+      if (query.isNotEmpty) {
+        filtered = filtered
+            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .toList();
+      }
+
+      return AsyncValue.data(filtered);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
+});
+
+// Wishlist Provider (games on wishlist)
+final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
+  final games = ref.watch(gamesProvider);
+  final query = ref.watch(searchQueryProvider);
+
+  return games.when(
+    data: (gamesList) {
+      // Filter to only show wishlisted games
+      var filtered = gamesList.where((game) => game.wishlisted).toList();
 
       // Apply search filter
       if (query.isNotEmpty) {
@@ -244,4 +338,61 @@ enum SyncStatus {
   syncing,
   success,
   error,
+}
+
+// Scheduled Games Provider
+final scheduledGamesProvider = StateNotifierProvider<ScheduledGamesNotifier, AsyncValue<List<ScheduledGame>>>((ref) {
+  return ScheduledGamesNotifier(ref);
+});
+
+class ScheduledGamesNotifier extends StateNotifier<AsyncValue<List<ScheduledGame>>> {
+  final Ref ref;
+
+  ScheduledGamesNotifier(this.ref) : super(const AsyncValue.loading()) {
+    loadScheduledGames();
+  }
+
+  Future<void> loadScheduledGames() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = ref.read(databaseServiceProvider);
+      final scheduledGames = await db.getAllFutureScheduledGames();
+      state = AsyncValue.data(scheduledGames);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<List<ScheduledGame>> getScheduledGamesForGame(int gameId) async {
+    final db = ref.read(databaseServiceProvider);
+    return await db.getScheduledGamesForGame(gameId);
+  }
+
+  Future<ScheduledGame> scheduleGame({
+    required int gameId,
+    required DateTime scheduledDateTime,
+    String? location,
+  }) async {
+    final db = ref.read(databaseServiceProvider);
+    final scheduledGame = ScheduledGame(
+      gameId: gameId,
+      scheduledDateTime: scheduledDateTime,
+      location: location,
+    );
+    final saved = await db.insertScheduledGame(scheduledGame);
+    await loadScheduledGames();
+    return saved;
+  }
+
+  Future<void> deleteScheduledGame(int scheduledGameId) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.deleteScheduledGame(scheduledGameId);
+    await loadScheduledGames();
+  }
+
+  Future<void> updateScheduledGame(ScheduledGame scheduledGame) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.updateScheduledGame(scheduledGame);
+    await loadScheduledGames();
+  }
 }

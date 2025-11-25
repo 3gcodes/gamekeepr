@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/game.dart';
 import '../providers/app_providers.dart';
 import 'game_details_screen.dart';
 
@@ -46,7 +47,14 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
     });
 
     try {
+      // Ensure token is loaded before using the service
       final bggService = ref.read(bggServiceProvider);
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final token = prefs.getString('bgg_api_token') ?? '';
+      if (token.isNotEmpty) {
+        bggService.setBearerToken(token);
+      }
+
       final results = await bggService.searchGames(query);
 
       setState(() {
@@ -74,8 +82,32 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
     }
 
     try {
+      // Ensure token is loaded before using the service
       final bggService = ref.read(bggServiceProvider);
-      final game = await bggService.fetchGameDetails(bggId);
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final token = prefs.getString('bgg_api_token') ?? '';
+      if (token.isNotEmpty) {
+        bggService.setBearerToken(token);
+      }
+
+      final gamesNotifier = ref.read(gamesProvider.notifier);
+
+      // First check if game already exists in database
+      var existingGame = await gamesNotifier.getGameByBggId(bggId);
+
+      Game gameToShow;
+      bool isOwned;
+
+      if (existingGame != null) {
+        // Game already exists, use existing data
+        gameToShow = existingGame;
+        isOwned = existingGame.owned;
+      } else {
+        // Fetch from BGG and save to database (as not owned)
+        final game = await bggService.fetchGameDetails(bggId);
+        gameToShow = await gamesNotifier.saveGameFromBggSearch(game);
+        isOwned = false;
+      }
 
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
@@ -83,8 +115,8 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => GameDetailsScreen(
-              game: game,
-              isOwned: false, // Not in collection
+              game: gameToShow,
+              isOwned: isOwned,
             ),
           ),
         );

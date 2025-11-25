@@ -182,14 +182,14 @@ class NfcService {
               print('❌ Write error: $writeError');
               // If write fails, try one more time immediately
               print('🔄 Retrying write...');
-              await Future.delayed(Duration(milliseconds: 100));
+              await Future.delayed(const Duration(milliseconds: 100));
               await ndef.write(message);
               print('✅ Write successful on retry!');
               NfcManager.instance.stopSession(alertMessage: 'Game ID written successfully!');
               if (!completer.isCompleted) completer.complete(true);
               sessionActive = false;
             }
-          } catch (e, stackTrace) {
+          } catch (e) {
             print('❌ Error: $e');
             NfcManager.instance.stopSession(errorMessage: 'Write failed');
             if (!completer.isCompleted) completer.complete(false);
@@ -271,14 +271,14 @@ class NfcService {
               print('❌ Write error: $writeError');
               // If write fails, try one more time immediately
               print('🔄 Retrying write...');
-              await Future.delayed(Duration(milliseconds: 100));
+              await Future.delayed(const Duration(milliseconds: 100));
               await ndef.write(message);
               print('✅ Write successful on retry!');
               NfcManager.instance.stopSession(alertMessage: 'Shelf $shelf tag written successfully!');
               if (!completer.isCompleted) completer.complete(true);
               sessionActive = false;
             }
-          } catch (e, stackTrace) {
+          } catch (e) {
             print('❌ Error: $e');
             NfcManager.instance.stopSession(errorMessage: 'Write failed');
             if (!completer.isCompleted) completer.complete(false);

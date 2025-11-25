@@ -85,7 +85,7 @@ class _LocationPickerState extends State<LocationPicker> {
                 // Shelf dropdown
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    value: _selectedShelf,
+                    initialValue: _selectedShelf,
                     decoration: InputDecoration(
                       labelText: 'Shelf',
                       border: OutlineInputBorder(
@@ -111,7 +111,7 @@ class _LocationPickerState extends State<LocationPicker> {
                 // Bay dropdown
                 Expanded(
                   child: DropdownButtonFormField<int>(
-                    value: _selectedBay,
+                    initialValue: _selectedBay,
                     decoration: InputDecoration(
                       labelText: 'Bay',
                       border: OutlineInputBorder(

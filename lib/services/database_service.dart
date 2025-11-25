@@ -4,6 +4,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/game.dart';
 import '../models/play.dart';
+import '../models/scheduled_game.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -23,7 +24,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 8,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -49,7 +50,9 @@ class DatabaseService {
         categories TEXT,
         mechanics TEXT,
         base_game TEXT,
-        expansions TEXT
+        expansions TEXT,
+        owned INTEGER NOT NULL DEFAULT 1,
+        wishlisted INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -83,6 +86,28 @@ class DatabaseService {
     // Create index on date_played for sorting
     await db.execute('''
       CREATE INDEX idx_plays_date ON plays(date_played)
+    ''');
+
+    // Create scheduled_games table
+    await db.execute('''
+      CREATE TABLE scheduled_games (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id INTEGER NOT NULL,
+        scheduled_date_time TEXT NOT NULL,
+        location TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Create index on game_id for faster lookups
+    await db.execute('''
+      CREATE INDEX idx_scheduled_game_id ON scheduled_games(game_id)
+    ''');
+
+    // Create index on scheduled_date_time for sorting
+    await db.execute('''
+      CREATE INDEX idx_scheduled_date ON scheduled_games(scheduled_date_time)
     ''');
   }
 
@@ -132,6 +157,42 @@ class DatabaseService {
       ''');
       await db.execute('''
         ALTER TABLE games ADD COLUMN expansions TEXT
+      ''');
+    }
+
+    if (oldVersion < 6) {
+      // Add owned column for version 6 - default to 1 (true) for existing games
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN owned INTEGER NOT NULL DEFAULT 1
+      ''');
+    }
+
+    if (oldVersion < 7) {
+      // Add wishlisted column for version 7 - default to 0 (false) for existing games
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN wishlisted INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
+
+    if (oldVersion < 8) {
+      // Add scheduled_games table for version 8
+      await db.execute('''
+        CREATE TABLE scheduled_games (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          game_id INTEGER NOT NULL,
+          scheduled_date_time TEXT NOT NULL,
+          location TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_scheduled_game_id ON scheduled_games(game_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_scheduled_date ON scheduled_games(scheduled_date_time)
       ''');
     }
   }
@@ -210,6 +271,37 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [gameId],
     );
+  }
+
+  Future<int> updateGameOwned(int gameId, bool owned) async {
+    final db = await database;
+    return await db.update(
+      'games',
+      {'owned': owned ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [gameId],
+    );
+  }
+
+  Future<int> updateGameWishlisted(int gameId, bool wishlisted) async {
+    final db = await database;
+    return await db.update(
+      'games',
+      {'wishlisted': wishlisted ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [gameId],
+    );
+  }
+
+  Future<List<Game>> getWishlistedGames() async {
+    final db = await database;
+    final maps = await db.query(
+      'games',
+      where: 'wishlisted = ?',
+      whereArgs: [1],
+      orderBy: 'name ASC',
+    );
+    return maps.map((map) => Game.fromMap(map)).toList();
   }
 
   Future<int> deleteGame(int id) async {
@@ -355,6 +447,78 @@ class DatabaseService {
     ''');
 
     return result;
+  }
+
+  // ==================== Scheduled Games Methods ====================
+
+  /// Insert a new scheduled game
+  Future<ScheduledGame> insertScheduledGame(ScheduledGame scheduledGame) async {
+    final db = await database;
+    final id = await db.insert(
+      'scheduled_games',
+      scheduledGame.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return scheduledGame.copyWith(id: id);
+  }
+
+  /// Get all scheduled games for a specific game (future only)
+  Future<List<ScheduledGame>> getScheduledGamesForGame(int gameId) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final maps = await db.query(
+      'scheduled_games',
+      where: 'game_id = ? AND scheduled_date_time > ?',
+      whereArgs: [gameId, now],
+      orderBy: 'scheduled_date_time ASC',
+    );
+    return maps.map((map) => ScheduledGame.fromMap(map)).toList();
+  }
+
+  /// Get all future scheduled games
+  Future<List<ScheduledGame>> getAllFutureScheduledGames() async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final maps = await db.query(
+      'scheduled_games',
+      where: 'scheduled_date_time > ?',
+      whereArgs: [now],
+      orderBy: 'scheduled_date_time ASC',
+    );
+    return maps.map((map) => ScheduledGame.fromMap(map)).toList();
+  }
+
+  /// Update a scheduled game
+  Future<void> updateScheduledGame(ScheduledGame scheduledGame) async {
+    final db = await database;
+    await db.update(
+      'scheduled_games',
+      scheduledGame.toMap(),
+      where: 'id = ?',
+      whereArgs: [scheduledGame.id],
+    );
+  }
+
+  /// Delete a scheduled game
+  Future<void> deleteScheduledGame(int scheduledGameId) async {
+    final db = await database;
+    await db.delete(
+      'scheduled_games',
+      where: 'id = ?',
+      whereArgs: [scheduledGameId],
+    );
+  }
+
+  /// Get scheduled game by ID
+  Future<ScheduledGame?> getScheduledGameById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'scheduled_games',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return ScheduledGame.fromMap(maps.first);
   }
 
   Future<void> close() async {

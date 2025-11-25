@@ -77,7 +77,7 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
 
           if (won == null) {
             // User cancelled - go back
-            Navigator.pop(context);
+            if (mounted) Navigator.pop(context);
             return;
           }
 
@@ -94,24 +94,26 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
           // Reload recently played games list
           ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
 
-          final formattedDate = DateFormat('MMM d, yyyy').format(DateTime.now());
-          final wonText = won ? ' - Won!' : ' - Lost';
+          if (mounted) {
+            final formattedDate = DateFormat('MMM d, yyyy').format(DateTime.now());
+            final wonText = won ? ' - Won!' : ' - Lost';
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Play recorded for ${game.name} on $formattedDate$wonText'),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Play recorded for ${game.name} on $formattedDate$wonText'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
 
-          // Navigate to game details
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => GameDetailsScreen(game: game),
-            ),
-          );
+            // Navigate to game details
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GameDetailsScreen(game: game),
+              ),
+            );
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(

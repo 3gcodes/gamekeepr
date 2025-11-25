@@ -138,6 +138,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Export the database
       final backupPath = await DatabaseService.instance.exportDatabase();
 
+      if (!mounted) return;
+
       final timestamp = DateTime.now();
       final formattedDate = '${timestamp.year}${timestamp.month.toString().padLeft(2, '0')}${timestamp.day.toString().padLeft(2, '0')}_${timestamp.hour.toString().padLeft(2, '0')}${timestamp.minute.toString().padLeft(2, '0')}';
 
@@ -200,6 +202,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       return;
     }
+
+    if (!mounted) return;
 
     // Confirm restoration
     final confirmed = await showDialog<bool>(

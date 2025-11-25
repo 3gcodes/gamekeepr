@@ -12,6 +12,7 @@ import 'nfc_scan_screen.dart';
 import 'nfc_record_play_screen.dart';
 import 'write_shelf_tag_screen.dart';
 import 'bgg_search_screen.dart';
+import 'wishlist_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -157,10 +158,82 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(
+                  Icons.casino,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Game Keepr',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.favorite),
+            title: const Text('Wishlist'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const WishlistScreen()),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.settings),
+            title: const Text('Settings'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getAppBarTitle(int currentTab) {
+    switch (currentTab) {
+      case 0:
+        return 'Collection';
+      case 1:
+        return 'All Games';
+      case 2:
+        return 'Recently Played';
+      default:
+        return 'Game Keepr';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentTab = ref.watch(currentViewTabProvider);
     final filteredGames = ref.watch(filteredGamesProvider);
+    final allGames = ref.watch(allGamesFilteredProvider);
     final filteredRecentlyPlayed = ref.watch(filteredRecentlyPlayedGamesProvider);
     final syncStatus = ref.watch(syncStatusProvider);
     final isSyncing = syncStatus == SyncStatus.syncing;
@@ -169,10 +242,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(currentTab == 0 ? 'Game Keepr' : 'Recently Played'),
+        title: Text(_getAppBarTitle(currentTab)),
         actions: [
-          // Filter button - only show on Collection tab
-          if (currentTab == 0)
+          // Filter button - show on Collection and All Games tabs
+          if (currentTab == 0 || currentTab == 1)
             IconButton(
               icon: Badge(
                 isLabelVisible: hasActiveFilters,
@@ -240,18 +313,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onPressed: isSyncing ? null : _syncGames,
             tooltip: 'Sync from BGG',
           ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-            tooltip: 'Settings',
-          ),
         ],
       ),
+      drawer: _buildDrawer(context),
       body: GestureDetector(
         onTap: () {
           // Dismiss keyboard when tapping outside the text field
@@ -286,9 +350,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           Expanded(
-            child: currentTab == 0
-                ? _buildCollectionView(filteredGames)
-                : _buildRecentlyPlayedView(filteredRecentlyPlayed),
+            child: _buildTabContent(currentTab, filteredGames, allGames, filteredRecentlyPlayed),
           ),
         ],
         ),
@@ -306,12 +368,34 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: 'Collection',
           ),
           BottomNavigationBarItem(
+            icon: Icon(Icons.games),
+            label: 'Games',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.history),
             label: 'Recently Played',
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildTabContent(
+    int currentTab,
+    AsyncValue<List<Game>> filteredGames,
+    AsyncValue<List<Game>> allGames,
+    AsyncValue<List<GameWithPlayInfo>> filteredRecentlyPlayed,
+  ) {
+    switch (currentTab) {
+      case 0:
+        return _buildCollectionView(filteredGames);
+      case 1:
+        return _buildAllGamesView(allGames);
+      case 2:
+        return _buildRecentlyPlayedView(filteredRecentlyPlayed);
+      default:
+        return _buildCollectionView(filteredGames);
+    }
   }
 
   Widget _buildCollectionView(AsyncValue<List<Game>> filteredGames) {
@@ -380,6 +464,104 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   context,
                   MaterialPageRoute(
                     builder: (_) => GameDetailsScreen(game: game),
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, size: 64, color: Colors.red),
+            const SizedBox(height: 16),
+            Text('Error: $error'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                ref.read(gamesProvider.notifier).loadGames();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAllGamesView(AsyncValue<List<Game>> allGames) {
+    return allGames.when(
+      data: (games) {
+        if (games.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.games_outlined,
+                  size: 64,
+                  color: Colors.grey[400],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _searchController.text.isEmpty
+                      ? 'No games yet'
+                      : 'No games found',
+                  style: TextStyle(
+                    fontSize: 18,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                if (_searchController.text.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sync your collection or search BGG to add games',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BggSearchScreen(
+                            initialQuery: _searchController.text,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.search),
+                    label: const Text('Search BGG'),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          itemCount: games.length,
+          itemBuilder: (context, index) {
+            final game = games[index];
+            return _GameListItem(
+              game: game,
+              showOwnedIndicator: true,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameDetailsScreen(
+                      game: game,
+                      isOwned: game.owned,
+                    ),
                   ),
                 );
               },
@@ -490,10 +672,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _GameListItem extends StatelessWidget {
   final Game game;
   final VoidCallback onTap;
+  final bool showOwnedIndicator;
 
   const _GameListItem({
     required this.game,
     required this.onTap,
+    this.showOwnedIndicator = false,
   });
 
   @override
@@ -596,6 +780,27 @@ class _GameListItem extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (showOwnedIndicator) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            game.owned ? Icons.check_circle : Icons.remove_circle_outline,
+                            size: 14,
+                            color: game.owned ? Colors.green[600] : Colors.grey[500],
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            game.owned ? 'Owned' : 'Not Owned',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: game.owned ? Colors.green[600] : Colors.grey[500],
                               fontWeight: FontWeight.w500,
                             ),
                           ),

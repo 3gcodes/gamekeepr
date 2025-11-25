@@ -43,6 +43,8 @@ class Game {
   final List<String>? mechanics;
   final ExpansionReference? baseGame; // If this is an expansion, reference to base game
   final List<ExpansionReference>? expansions; // If this is a base game, list of expansions
+  final bool owned; // Whether this game is in the user's collection
+  final bool wishlisted; // Whether this game is on the user's wishlist
 
   Game({
     this.id,
@@ -63,6 +65,8 @@ class Game {
     this.mechanics,
     this.baseGame,
     this.expansions,
+    this.owned = true,
+    this.wishlisted = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -85,6 +89,8 @@ class Game {
       'mechanics': mechanics != null ? jsonEncode(mechanics) : null,
       'base_game': baseGame != null ? jsonEncode(baseGame!.toMap()) : null,
       'expansions': expansions != null ? jsonEncode(expansions!.map((e) => e.toMap()).toList()) : null,
+      'owned': owned ? 1 : 0,
+      'wishlisted': wishlisted ? 1 : 0,
     };
   }
 
@@ -120,6 +126,8 @@ class Game {
               .map((e) => ExpansionReference.fromMap(e as Map<String, dynamic>))
               .toList()
           : null,
+      owned: map['owned'] == null ? true : (map['owned'] as int) == 1,
+      wishlisted: map['wishlisted'] == null ? false : (map['wishlisted'] as int) == 1,
     );
   }
 
@@ -142,6 +150,8 @@ class Game {
     List<String>? mechanics,
     ExpansionReference? baseGame,
     List<ExpansionReference>? expansions,
+    bool? owned,
+    bool? wishlisted,
   }) {
     return Game(
       id: id ?? this.id,
@@ -162,6 +172,8 @@ class Game {
       mechanics: mechanics ?? this.mechanics,
       baseGame: baseGame ?? this.baseGame,
       expansions: expansions ?? this.expansions,
+      owned: owned ?? this.owned,
+      wishlisted: wishlisted ?? this.wishlisted,
     );
   }
 

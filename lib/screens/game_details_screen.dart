@@ -1,8 +1,14 @@
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:http/http.dart' as http;
 import '../models/game.dart';
 import '../models/play.dart';
+import '../models/scheduled_game.dart';
 import '../providers/app_providers.dart';
 import '../widgets/location_picker.dart';
 import 'package:intl/intl.dart';
@@ -26,13 +32,15 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
   bool _isLoadingDetails = false;
   List<Play> _plays = [];
   bool _isLoadingPlays = false;
+  List<ScheduledGame> _scheduledGames = [];
+  bool _isLoadingScheduled = false;
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _detailedGame = widget.game;
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
 
     // Fetch details once if we don't have them
     if (_needsDetails(widget.game)) {
@@ -41,6 +49,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
     // Load play history for this game
     _loadPlays();
+
+    // Load scheduled games for this game
+    _loadScheduledGames();
   }
 
   @override
@@ -55,6 +66,675 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
            game.categories == null ||
            game.mechanics == null ||
            (game.baseGame == null && game.expansions == null);
+  }
+
+  Future<void> _toggleWishlist() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    final newWishlistStatus = !game.wishlisted;
+
+    try {
+      final updatedGame = await ref.read(gamesProvider.notifier).toggleWishlist(
+        game.id!,
+        newWishlistStatus,
+      );
+
+      if (updatedGame != null && mounted) {
+        setState(() {
+          _detailedGame = updatedGame;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newWishlistStatus
+                  ? 'Added to wishlist'
+                  : 'Removed from wishlist',
+            ),
+            backgroundColor: newWishlistStatus ? Colors.green : Colors.grey,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating wishlist: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleOwned() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    final newOwnedStatus = !game.owned;
+
+    try {
+      final updatedGame = await ref.read(gamesProvider.notifier).toggleOwned(
+        game.id!,
+        newOwnedStatus,
+      );
+
+      if (updatedGame != null && mounted) {
+        setState(() {
+          _detailedGame = updatedGame;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newOwnedStatus
+                  ? 'Marked as owned'
+                  : 'Marked as not owned',
+            ),
+            backgroundColor: newOwnedStatus ? Colors.green : Colors.grey,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating owned status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadScheduledGames() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    setState(() {
+      _isLoadingScheduled = true;
+    });
+
+    try {
+      final scheduledGames = await ref
+          .read(scheduledGamesProvider.notifier)
+          .getScheduledGamesForGame(game.id!);
+
+      if (mounted) {
+        setState(() {
+          _scheduledGames = scheduledGames;
+          _isLoadingScheduled = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingScheduled = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _showScheduleDialog() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
+    TimeOfDay selectedTime = const TimeOfDay(hour: 19, minute: 0);
+    final locationController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Schedule Game Session'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  game.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Date picker
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_today),
+                  title: const Text('Date'),
+                  subtitle: Text(DateFormat('EEEE, MMM d, yyyy').format(selectedDate)),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setDialogState(() {
+                        selectedDate = date;
+                      });
+                    }
+                  },
+                ),
+                // Time picker
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('Time'),
+                  subtitle: Text(selectedTime.format(context)),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (time != null) {
+                      setDialogState(() {
+                        selectedTime = time;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Location field
+                TextField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Location (optional)',
+                    hintText: 'e.g., John\'s house, Game store',
+                    prefixIcon: Icon(Icons.location_on),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Schedule'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      final scheduledDateTime = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        selectedTime.hour,
+        selectedTime.minute,
+      );
+
+      try {
+        await ref.read(scheduledGamesProvider.notifier).scheduleGame(
+          gameId: game.id!,
+          scheduledDateTime: scheduledDateTime,
+          location: locationController.text.isEmpty ? null : locationController.text,
+        );
+
+        await _loadScheduledGames();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Game session scheduled!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error scheduling game: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+
+    locationController.dispose();
+  }
+
+  Future<void> _deleteScheduledGame(ScheduledGame scheduledGame) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Scheduled Session'),
+        content: const Text('Are you sure you want to delete this scheduled session?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && scheduledGame.id != null) {
+      try {
+        await ref.read(scheduledGamesProvider.notifier).deleteScheduledGame(scheduledGame.id!);
+        await _loadScheduledGames();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Scheduled session deleted'),
+              backgroundColor: Colors.grey,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting session: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _editScheduledGame(ScheduledGame scheduledGame) async {
+    final game = _detailedGame;
+    if (game == null || game.id == null || scheduledGame.id == null) return;
+
+    DateTime selectedDate = scheduledGame.scheduledDateTime;
+    TimeOfDay selectedTime = TimeOfDay(
+      hour: scheduledGame.scheduledDateTime.hour,
+      minute: scheduledGame.scheduledDateTime.minute,
+    );
+    final locationController = TextEditingController(text: scheduledGame.location ?? '');
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Game Session'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  game.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Date picker
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.calendar_today),
+                  title: const Text('Date'),
+                  subtitle: Text(DateFormat('EEEE, MMM d, yyyy').format(selectedDate)),
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (date != null) {
+                      setDialogState(() {
+                        selectedDate = date;
+                      });
+                    }
+                  },
+                ),
+                // Time picker
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.access_time),
+                  title: const Text('Time'),
+                  subtitle: Text(selectedTime.format(context)),
+                  onTap: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (time != null) {
+                      setDialogState(() {
+                        selectedTime = time;
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Location field
+                TextField(
+                  controller: locationController,
+                  decoration: const InputDecoration(
+                    labelText: 'Location (optional)',
+                    hintText: 'e.g., John\'s house, Game store',
+                    prefixIcon: Icon(Icons.location_on),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true && mounted) {
+      final scheduledDateTime = DateTime(
+        selectedDate.year,
+        selectedDate.month,
+        selectedDate.day,
+        selectedTime.hour,
+        selectedTime.minute,
+      );
+
+      try {
+        final updatedScheduledGame = scheduledGame.copyWith(
+          scheduledDateTime: scheduledDateTime,
+          location: locationController.text.isEmpty ? null : locationController.text,
+        );
+
+        await ref.read(scheduledGamesProvider.notifier).updateScheduledGame(updatedScheduledGame);
+        await _loadScheduledGames();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Game session updated!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error updating session: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+
+    locationController.dispose();
+  }
+
+  Future<void> _shareScheduledGame(ScheduledGame scheduledGame) async {
+    final game = _detailedGame;
+    if (game == null) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Download game image if available
+      ui.Image? gameImage;
+      if (game.imageUrl != null) {
+        try {
+          final response = await http.get(Uri.parse(game.imageUrl!));
+          if (response.statusCode == 200) {
+            final codec = await ui.instantiateImageCodec(response.bodyBytes);
+            final frame = await codec.getNextFrame();
+            gameImage = frame.image;
+          }
+        } catch (e) {
+          // Ignore image download errors, continue without image
+        }
+      }
+
+      // Create the share card image
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      const cardWidth = 400.0;
+      const cardHeight = 500.0;
+      const padding = 24.0;
+
+      // Draw background
+      final backgroundPaint = Paint()
+        ..shader = ui.Gradient.linear(
+          Offset.zero,
+          const Offset(0, cardHeight),
+          [const Color(0xFF1a237e), const Color(0xFF3949ab)],
+        );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(0, 0, cardWidth, cardHeight),
+          const Radius.circular(20),
+        ),
+        backgroundPaint,
+      );
+
+      // Draw game image if available
+      double contentStartY = padding;
+      if (gameImage != null) {
+        const imageSize = 120.0;
+        final srcRect = Rect.fromLTWH(
+          0, 0,
+          gameImage.width.toDouble(),
+          gameImage.height.toDouble(),
+        );
+        final dstRect = Rect.fromLTWH(
+          (cardWidth - imageSize) / 2,
+          contentStartY,
+          imageSize,
+          imageSize,
+        );
+
+        // Draw circular clip for image
+        canvas.save();
+        canvas.clipRRect(RRect.fromRectAndRadius(dstRect, const Radius.circular(12)));
+        canvas.drawImageRect(gameImage, srcRect, dstRect, Paint());
+        canvas.restore();
+
+        contentStartY += imageSize + 20;
+      }
+
+      // Draw "Game Night!" header
+      final headerParagraph = _buildParagraph(
+        'Game Night!',
+        28,
+        FontWeight.bold,
+        Colors.white,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        headerParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += headerParagraph.height + 16;
+
+      // Draw game name
+      final nameParagraph = _buildParagraph(
+        game.name,
+        22,
+        FontWeight.w600,
+        Colors.white,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        nameParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += nameParagraph.height + 24;
+
+      // Draw divider
+      final dividerPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.3)
+        ..strokeWidth = 1;
+      canvas.drawLine(
+        Offset(padding * 2, contentStartY),
+        Offset(cardWidth - (padding * 2), contentStartY),
+        dividerPaint,
+      );
+      contentStartY += 24;
+
+      // Draw date
+      final dateStr = DateFormat('EEEE, MMMM d, yyyy').format(scheduledGame.scheduledDateTime);
+      final dateParagraph = _buildParagraph(
+        dateStr,
+        18,
+        FontWeight.w500,
+        Colors.white,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        dateParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += dateParagraph.height + 8;
+
+      // Draw time
+      final timeStr = DateFormat('h:mm a').format(scheduledGame.scheduledDateTime);
+      final timeParagraph = _buildParagraph(
+        timeStr,
+        24,
+        FontWeight.bold,
+        Colors.amber,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        timeParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += timeParagraph.height + 16;
+
+      // Draw location if available
+      if (scheduledGame.location != null && scheduledGame.location!.isNotEmpty) {
+        final locationParagraph = _buildParagraph(
+          '📍 ${scheduledGame.location}',
+          16,
+          FontWeight.normal,
+          Colors.white.withValues(alpha: 0.9),
+          cardWidth - (padding * 2),
+          TextAlign.center,
+        );
+        canvas.drawParagraph(
+          locationParagraph,
+          Offset(padding, contentStartY),
+        );
+        contentStartY += locationParagraph.height + 16;
+      }
+
+      // Draw app branding at bottom
+      final brandingParagraph = _buildParagraph(
+        'Shared from Game Keepr',
+        12,
+        FontWeight.normal,
+        Colors.white.withValues(alpha: 0.6),
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        brandingParagraph,
+        Offset(padding, cardHeight - padding - brandingParagraph.height),
+      );
+
+      // Convert to image
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(cardWidth.toInt(), cardHeight.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData == null) throw Exception('Failed to create image');
+
+      // Save to temp file
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/game_session_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Share the image
+      if (mounted) {
+        final box = context.findRenderObject() as RenderBox?;
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Join me for ${game.name} on $dateStr at $timeStr!',
+          sharePositionOrigin: box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : const Rect.fromLTWH(0, 0, 100, 100),
+        );
+      }
+
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sharing: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  ui.Paragraph _buildParagraph(
+    String text,
+    double fontSize,
+    FontWeight fontWeight,
+    Color color,
+    double width,
+    TextAlign textAlign,
+  ) {
+    final paragraphStyle = ui.ParagraphStyle(
+      textAlign: textAlign,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+    );
+    final paragraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+      ..pushStyle(ui.TextStyle(color: color, fontSize: fontSize, fontWeight: fontWeight))
+      ..addText(text);
+    final paragraph = paragraphBuilder.build()
+      ..layout(ui.ParagraphConstraints(width: width));
+    return paragraph;
   }
 
   Future<void> _onExpansionTap(int expansionBggId, String expansionName) async {
@@ -101,7 +781,14 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     try {
       print('📖 Fetching details for game ${widget.game.bggId}...');
 
+      // Ensure token is loaded before using the service
       final bggService = ref.read(bggServiceProvider);
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final token = prefs.getString('bgg_api_token') ?? '';
+      if (token.isNotEmpty) {
+        bggService.setBearerToken(token);
+      }
+
       final detailedGame = await bggService.fetchGameDetails(widget.game.bggId);
 
       // Preserve the database ID and location
@@ -214,6 +901,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     );
 
     if (selectedDate == null) return;
+    if (!mounted) return;
 
     // Show won dialog
     bool wonValue = false;
@@ -311,6 +999,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     );
 
     if (selectedDate == null) return;
+    if (!mounted) return;
 
     // Show won dialog with initial value
     bool wonValue = play.won ?? false;
@@ -710,105 +1399,252 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.isOwned) ...[
-            Text(
-              'Play History',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+          Text(
+            'Play History',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _recordPlay,
+              icon: const Icon(Icons.add),
+              label: const Text('Record Play'),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _recordPlay,
-                icon: const Icon(Icons.add),
-                label: const Text('Record Play'),
-              ),
-            ),
-            const SizedBox(height: 16),
+          ),
+          const SizedBox(height: 16),
 
-            // Play History List
-            if (_isLoadingPlays)
-              const Center(child: CircularProgressIndicator())
-            else if (_plays.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
-                child: Center(
-                  child: Text(
-                    'No plays recorded yet',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic,
-                    ),
+          // Play History List
+          if (_isLoadingPlays)
+            const Center(child: CircularProgressIndicator())
+          else if (_plays.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Center(
+                child: Text(
+                  'No plays recorded yet',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
-              )
-            else
-              Column(
-                children: _plays.map((play) {
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    child: ListTile(
-                      leading: play.won == null
-                          ? const Icon(Icons.event, color: Colors.blue)
-                          : play.won!
-                              ? const Icon(Icons.emoji_events, color: Colors.amber)
-                              : const Icon(Icons.event, color: Colors.grey),
-                      title: Row(
-                        children: [
-                          Expanded(
+              ),
+            )
+          else
+            Column(
+              children: _plays.map((play) {
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: play.won == null
+                        ? const Icon(Icons.event, color: Colors.blue)
+                        : play.won!
+                            ? const Icon(Icons.emoji_events, color: Colors.amber)
+                            : const Icon(Icons.event, color: Colors.grey),
+                    title: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
+                            style: const TextStyle(fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        if (play.won != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: play.won! ? Colors.green[100] : Colors.red[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             child: Text(
-                              DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              play.won! ? 'Won' : 'Lost',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: play.won! ? Colors.green[800] : Colors.red[800],
+                              ),
                             ),
                           ),
-                          if (play.won != null)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: play.won! ? Colors.green[100] : Colors.red[100],
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                play.won! ? 'Won' : 'Lost',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: play.won! ? Colors.green[800] : Colors.red[800],
-                                ),
-                              ),
-                            ),
-                        ],
+                      ],
+                    ),
+                    subtitle: Text(
+                      'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
                       ),
-                      subtitle: Text(
-                        'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey[600],
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _editPlay(play),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _deletePlay(play.id!),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScheduledTab() {
+    if (_isLoadingScheduled) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Schedule button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _showScheduleDialog,
+              icon: const Icon(Icons.event_available),
+              label: const Text('Schedule Game Session'),
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Scheduled sessions list
+          if (_scheduledGames.isEmpty)
+            Center(
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  Icon(
+                    Icons.event_busy,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No upcoming sessions scheduled',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap the button above to schedule a game session',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Upcoming Sessions',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey[800],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ..._scheduledGames.map((scheduledGame) {
+                  final dateStr = DateFormat('EEEE, MMM d, yyyy').format(scheduledGame.scheduledDateTime);
+                  final timeStr = DateFormat('h:mm a').format(scheduledGame.scheduledDateTime);
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.event,
+                          color: Colors.blue[700],
+                        ),
+                      ),
+                      title: Text(
+                        dateStr,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                              const SizedBox(width: 4),
+                              Text(timeStr),
+                            ],
+                          ),
+                          if (scheduledGame.location != null && scheduledGame.location!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.location_on, size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    scheduledGame.location!,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
                       ),
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blue),
-                            onPressed: () => _editPlay(play),
+                            icon: const Icon(Icons.edit_outlined, color: Colors.orange),
+                            onPressed: () => _editScheduledGame(scheduledGame),
+                            tooltip: 'Edit',
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.red),
-                            onPressed: () => _deletePlay(play.id!),
+                            icon: const Icon(Icons.share, color: Colors.blue),
+                            onPressed: () => _shareScheduledGame(scheduledGame),
+                            tooltip: 'Share',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            onPressed: () => _deleteScheduledGame(scheduledGame),
+                            tooltip: 'Delete',
                           ),
                         ],
                       ),
+                      isThreeLine: scheduledGame.location != null && scheduledGame.location!.isNotEmpty,
                     ),
                   );
-                }).toList(),
-              ),
-          ],
+                }),
+              ],
+            ),
         ],
       ),
     );
@@ -850,28 +1686,81 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       ),
       body: Column(
         children: [
-          // Not Owned Banner
-          if (!widget.isOwned)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.orange[100],
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.orange[900]),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'This game is not in your collection',
+          // Ownership Banner with toggle
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: game.owned ? Colors.green[50] : Colors.orange[100],
+            child: Row(
+              children: [
+                Icon(
+                  game.owned ? Icons.check_circle : Icons.info_outline,
+                  color: game.owned ? Colors.green[700] : Colors.orange[900],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    game.owned ? 'In your collection' : 'Not in your collection',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: game.owned ? Colors.green[700] : Colors.orange[900],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Wishlist button (only for non-owned games)
+                if (!game.owned)
+                  TextButton.icon(
+                    onPressed: _toggleWishlist,
+                    icon: Icon(
+                      game.wishlisted ? Icons.favorite : Icons.favorite_border,
+                      size: 18,
+                      color: game.wishlisted ? Colors.red : Colors.grey[700],
+                    ),
+                    label: Text(
+                      game.wishlisted ? 'Wishlisted' : 'Wishlist',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 12,
+                        color: game.wishlisted ? Colors.red : Colors.grey[700],
                         fontWeight: FontWeight.w600,
-                        color: Colors.orange[900],
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
                   ),
-                ],
-              ),
+                if (!game.owned) const SizedBox(width: 4),
+                // Toggle owned button
+                TextButton.icon(
+                  onPressed: _toggleOwned,
+                  icon: Icon(
+                    game.owned ? Icons.remove_circle_outline : Icons.add_circle_outline,
+                    size: 18,
+                    color: game.owned ? Colors.red[700] : Colors.green[700],
+                  ),
+                  label: Text(
+                    game.owned ? 'Remove' : 'Add',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: game.owned ? Colors.red[700] : Colors.green[700],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                ),
+              ],
             ),
+          ),
           // Game Image
           if (game.imageUrl != null)
             CachedNetworkImage(
@@ -905,6 +1794,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             tabs: const [
               Tab(text: 'Details'),
               Tab(text: 'Play History'),
+              Tab(text: 'Scheduled'),
             ],
           ),
 
@@ -915,6 +1805,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
               children: [
                 _buildDetailsTab(game),
                 _buildPlayHistoryTab(),
+                _buildScheduledTab(),
               ],
             ),
           ),
