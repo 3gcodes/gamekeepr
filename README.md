@@ -236,7 +236,18 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License** (CC BY-NC-SA 4.0).
+
+**You are free to:**
+- Use, modify, and share this code for personal and non-commercial purposes
+- Build upon this work and create derivative applications
+
+**Under these terms:**
+- **Attribution**: You must give appropriate credit
+- **NonCommercial**: You may not use this for commercial purposes or sell it
+- **ShareAlike**: Any derivatives must use the same license
+
+See the [LICENSE](LICENSE) file for full details or visit https://creativecommons.org/licenses/by-nc-sa/4.0/
 
 ## Acknowledgments
 
