@@ -2,6 +2,10 @@
 
 A mobile Flutter application for managing your board game collection with NFC tag support, BoardGameGeek integration, and shelf location tracking.
 
+## About This Project
+
+This application was entirely written by **Claude** (Anthropic's AI assistant), specifically using **Claude Sonnet 4.5** (model: `claude-sonnet-4-5-20250929`). The entire codebase, including the Flutter/Dart implementation, database architecture, BGG API integration, NFC functionality, and UI/UX design, was generated through collaborative conversation with the project owner.
+
 ## Features
 
 ### BoardGameGeek Integration
@@ -15,9 +19,10 @@ A mobile Flutter application for managing your board game collection with NFC ta
   - **Collection**: View your owned games
   - **All Games**: See all games in your database (owned and wishlist)
   - **Recently Played**: Quick access to games you've played, sorted by last play date
+  - **Wishlist**: Dedicated view for games you want to add to your collection
+  - **Scheduled Games**: See all upcoming game sessions in one place
 - **Smart Filtering**: Filter by base games only, expansions only, or show all
 - **Search**: Fast local search across your entire collection
-- **Wishlist**: Mark games you want to add to your collection
 
 ### Physical Location Tracking
 - **Shelf & Bay System**: Track game locations using a shelf/bay format (e.g., "A1" = Shelf A, Bay 1)
@@ -38,10 +43,15 @@ A mobile Flutter application for managing your board game collection with NFC ta
 - **Edit & Delete**: Modify or remove play records as needed
 - **Statistics**: See play count and win/loss record in the recently played view
 
-### Game Scheduling
+### Game Scheduling & Sharing
 - **Schedule Sessions**: Plan future game sessions with date, time, and location
+- **Scheduled Games List**: View all upcoming game sessions in a dedicated screen (accessible from side menu)
 - **Edit & Delete**: Modify or cancel scheduled sessions
-- **Share Invites**: Generate shareable game night invite images
+- **Share Game Night Invites**: Generate shareable game session invite cards with blue gradient backgrounds
+- **Share Games**: Share any game with a custom card featuring:
+  - Green gradient background
+  - Game details (players, playtime, rating)
+  - Direct link to BoardGameGeek for easy reference
 
 ### Data Management
 - **Offline First**: Full SQLite database for offline access to your collection
@@ -139,6 +149,31 @@ The app requires NFC capabilities. These are already configured in the project:
 
 1. Scan a shelf NFC tag, or
 2. Navigate to a game with a location set and tap the location badge
+
+### Sharing Games
+
+#### Share a Game
+1. Open any game's details screen
+2. Tap the **share icon** in the app bar
+3. A shareable card will be generated with:
+   - Game image and details
+   - BoardGameGeek link
+4. Share via Messages, Mail, or any other app
+
+#### Share a Scheduled Game Session
+1. Open a game's details screen
+2. Navigate to the **Scheduled** tab
+3. Tap the **share icon** next to a scheduled session
+4. Share the game night invitation
+
+### Viewing Scheduled Games
+
+Access all your upcoming game sessions from the side menu:
+1. Open the navigation drawer (tap the menu icon)
+2. Tap **Scheduled Games**
+3. View all scheduled sessions sorted by date
+4. Games scheduled for today are highlighted in orange
+5. Tap any game to view full details
 
 ## Technical Details
 

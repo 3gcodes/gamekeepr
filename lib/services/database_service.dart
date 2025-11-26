@@ -462,27 +462,31 @@ class DatabaseService {
     return scheduledGame.copyWith(id: id);
   }
 
-  /// Get all scheduled games for a specific game (future only)
+  /// Get all scheduled games for a specific game (today and future)
   Future<List<ScheduledGame>> getScheduledGamesForGame(int gameId) async {
     final db = await database;
-    final now = DateTime.now().toIso8601String();
+    // Get start of today (midnight last night) to keep today's games visible all day
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day).toIso8601String();
     final maps = await db.query(
       'scheduled_games',
-      where: 'game_id = ? AND scheduled_date_time > ?',
-      whereArgs: [gameId, now],
+      where: 'game_id = ? AND scheduled_date_time >= ?',
+      whereArgs: [gameId, startOfToday],
       orderBy: 'scheduled_date_time ASC',
     );
     return maps.map((map) => ScheduledGame.fromMap(map)).toList();
   }
 
-  /// Get all future scheduled games
+  /// Get all scheduled games (today and future)
   Future<List<ScheduledGame>> getAllFutureScheduledGames() async {
     final db = await database;
-    final now = DateTime.now().toIso8601String();
+    // Get start of today (midnight last night) to keep today's games visible all day
+    final now = DateTime.now();
+    final startOfToday = DateTime(now.year, now.month, now.day).toIso8601String();
     final maps = await db.query(
       'scheduled_games',
-      where: 'scheduled_date_time > ?',
-      whereArgs: [now],
+      where: 'scheduled_date_time >= ?',
+      whereArgs: [startOfToday],
       orderBy: 'scheduled_date_time ASC',
     );
     return maps.map((map) => ScheduledGame.fromMap(map)).toList();

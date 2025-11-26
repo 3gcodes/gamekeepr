@@ -493,6 +493,227 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     locationController.dispose();
   }
 
+  Future<void> _shareGame() async {
+    final game = _detailedGame;
+    if (game == null) return;
+
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    try {
+      // Download game image if available
+      ui.Image? gameImage;
+      if (game.imageUrl != null) {
+        try {
+          final response = await http.get(Uri.parse(game.imageUrl!));
+          if (response.statusCode == 200) {
+            final codec = await ui.instantiateImageCodec(response.bodyBytes);
+            final frame = await codec.getNextFrame();
+            gameImage = frame.image;
+          }
+        } catch (e) {
+          // Ignore image download errors, continue without image
+        }
+      }
+
+      // Create the share card image
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+
+      const cardWidth = 400.0;
+      const cardHeight = 500.0;
+      const padding = 24.0;
+
+      // Draw background with green gradient
+      final backgroundPaint = Paint()
+        ..shader = ui.Gradient.linear(
+          Offset.zero,
+          const Offset(0, cardHeight),
+          [const Color(0xFF1B5E20), const Color(0xFF43A047)],
+        );
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(0, 0, cardWidth, cardHeight),
+          const Radius.circular(20),
+        ),
+        backgroundPaint,
+      );
+
+      // Draw game image if available
+      double contentStartY = padding;
+      if (gameImage != null) {
+        const imageSize = 120.0;
+        final srcRect = Rect.fromLTWH(
+          0, 0,
+          gameImage.width.toDouble(),
+          gameImage.height.toDouble(),
+        );
+        final dstRect = Rect.fromLTWH(
+          (cardWidth - imageSize) / 2,
+          contentStartY,
+          imageSize,
+          imageSize,
+        );
+
+        // Draw circular clip for image
+        canvas.save();
+        canvas.clipRRect(RRect.fromRectAndRadius(dstRect, const Radius.circular(12)));
+        canvas.drawImageRect(gameImage, srcRect, dstRect, Paint());
+        canvas.restore();
+
+        contentStartY += imageSize + 20;
+      }
+
+      // Draw "Check out this game!" header
+      final headerParagraph = _buildParagraph(
+        'Check out this game!',
+        26,
+        FontWeight.bold,
+        Colors.white,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        headerParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += headerParagraph.height + 16;
+
+      // Draw game name
+      final nameParagraph = _buildParagraph(
+        game.name,
+        22,
+        FontWeight.w600,
+        Colors.white,
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        nameParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += nameParagraph.height + 24;
+
+      // Draw divider
+      final dividerPaint = Paint()
+        ..color = Colors.white.withValues(alpha: 0.3)
+        ..strokeWidth = 1;
+      canvas.drawLine(
+        Offset(padding * 2, contentStartY),
+        Offset(cardWidth - (padding * 2), contentStartY),
+        dividerPaint,
+      );
+      contentStartY += 24;
+
+      // Draw game info
+      final infoParagraph = _buildParagraph(
+        '${game.playersInfo} • ${game.playtimeInfo}',
+        16,
+        FontWeight.w500,
+        Colors.white.withValues(alpha: 0.9),
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        infoParagraph,
+        Offset(padding, contentStartY),
+      );
+      contentStartY += infoParagraph.height + 16;
+
+      // Draw rating if available
+      if (game.averageRating != null) {
+        final ratingParagraph = _buildParagraph(
+          '⭐ ${game.averageRating!.toStringAsFixed(1)} Rating',
+          18,
+          FontWeight.bold,
+          Colors.amber,
+          cardWidth - (padding * 2),
+          TextAlign.center,
+        );
+        canvas.drawParagraph(
+          ratingParagraph,
+          Offset(padding, contentStartY),
+        );
+        contentStartY += ratingParagraph.height + 16;
+      }
+
+      // Draw BGG link
+      final bggUrl = 'boardgamegeek.com/boardgame/${game.bggId}';
+      final bggParagraph = _buildParagraph(
+        bggUrl,
+        14,
+        FontWeight.w500,
+        Colors.white.withValues(alpha: 0.8),
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        bggParagraph,
+        Offset(padding, contentStartY),
+      );
+
+      // Draw app branding at bottom
+      final brandingParagraph = _buildParagraph(
+        'Shared from Game Keepr',
+        12,
+        FontWeight.normal,
+        Colors.white.withValues(alpha: 0.6),
+        cardWidth - (padding * 2),
+        TextAlign.center,
+      );
+      canvas.drawParagraph(
+        brandingParagraph,
+        Offset(padding, cardHeight - padding - brandingParagraph.height),
+      );
+
+      // Convert to image
+      final picture = recorder.endRecording();
+      final img = await picture.toImage(cardWidth.toInt(), cardHeight.toInt());
+      final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData == null) throw Exception('Failed to create image');
+
+      // Save to temp file
+      final tempDir = await getTemporaryDirectory();
+      final file = File('${tempDir.path}/game_${DateTime.now().millisecondsSinceEpoch}.png');
+      await file.writeAsBytes(byteData.buffer.asUint8List());
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      // Share the image with BGG link
+      if (mounted) {
+        final box = context.findRenderObject() as RenderBox?;
+        await Share.shareXFiles(
+          [XFile(file.path)],
+          text: 'Check out ${game.name}!\n\nhttps://boardgamegeek.com/boardgame/${game.bggId}',
+          sharePositionOrigin: box != null
+              ? box.localToGlobal(Offset.zero) & box.size
+              : const Rect.fromLTWH(0, 0, 100, 100),
+        );
+      }
+
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sharing: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _shareScheduledGame(ScheduledGame scheduledGame) async {
     final game = _detailedGame;
     if (game == null) return;
@@ -1676,6 +1897,11 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
               onPressed: _fetchGameDetails,
               tooltip: 'Sync from BGG',
             ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            onPressed: _shareGame,
+            tooltip: 'Share Game',
+          ),
           if (widget.isOwned)
             IconButton(
               icon: const Icon(Icons.nfc),
