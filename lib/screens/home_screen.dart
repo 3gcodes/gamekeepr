@@ -14,6 +14,7 @@ import 'write_shelf_tag_screen.dart';
 import 'bgg_search_screen.dart';
 import 'wishlist_screen.dart';
 import 'scheduled_games_screen.dart';
+import 'move_games_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -208,6 +209,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const ScheduledGamesScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.drive_file_move),
+            title: const Text('Move Game(s)'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MoveGamesScreen()),
               );
             },
           ),
