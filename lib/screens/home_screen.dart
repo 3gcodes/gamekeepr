@@ -266,16 +266,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               onPressed: _showFilterBottomSheet,
               tooltip: 'Filter',
             ),
-          PopupMenuButton<String>(
+          // Direct Scan Tag button
+          IconButton(
             icon: const Icon(Icons.nfc),
-            tooltip: 'NFC Options',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NfcScanScreen()),
+              );
+            },
+            tooltip: 'Scan Tag',
+          ),
+          // Other NFC options menu
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.edit_note),
+            tooltip: 'NFC Actions',
             onSelected: (value) {
-              if (value == 'scan') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NfcScanScreen()),
-                );
-              } else if (value == 'record_play') {
+              if (value == 'record_play') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const NfcRecordPlayScreen()),
@@ -288,16 +295,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'scan',
-                child: Row(
-                  children: [
-                    Icon(Icons.nfc),
-                    SizedBox(width: 12),
-                    Text('Scan Tag'),
-                  ],
-                ),
-              ),
               const PopupMenuItem(
                 value: 'record_play',
                 child: Row(
@@ -312,7 +309,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 value: 'write_shelf',
                 child: Row(
                   children: [
-                    Icon(Icons.shelves),
+                    Icon(Icons.edit),
                     SizedBox(width: 12),
                     Text('Write Shelf Tag'),
                   ],
@@ -798,6 +795,23 @@ class _GameListItem extends StatelessWidget {
                         ],
                       ),
                     ],
+                    if (game.hasNfcTag) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.nfc, size: 14, color: Colors.purple[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            'NFC Tag',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.purple[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (showOwnedIndicator) ...[
                       const SizedBox(height: 4),
                       Row(
@@ -962,6 +976,23 @@ class _RecentlyPlayedGameListItem extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.blue[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (game.hasNfcTag) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(Icons.nfc, size: 14, color: Colors.purple[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            'NFC Tag',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.purple[600],
                               fontWeight: FontWeight.w500,
                             ),
                           ),

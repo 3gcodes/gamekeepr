@@ -1410,6 +1410,19 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
         Navigator.pop(context); // Close dialog
 
         if (success) {
+          // Mark the game as having an NFC tag
+          final db = ref.read(databaseServiceProvider);
+          await db.updateGameHasNfcTag(widget.game.id!, true);
+
+          // Update local state
+          setState(() {
+            final currentGame = _detailedGame ?? widget.game;
+            _detailedGame = currentGame.copyWith(hasNfcTag: true);
+          });
+
+          // Reload games in provider to reflect the change
+          ref.read(gamesProvider.notifier).loadGames();
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Game ID written to NFC tag'),
@@ -1486,6 +1499,13 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             value: game.location?.isNotEmpty == true ? game.location! : 'Not set',
           ),
 
+          _InfoRow(
+            icon: Icons.nfc,
+            label: 'NFC Tag',
+            value: game.hasNfcTag ? 'Assigned' : 'Unassigned',
+            valueColor: game.hasNfcTag ? Colors.green : Colors.purple,
+          ),
+
           const SizedBox(height: 16),
           const Divider(),
           const SizedBox(height: 16),
@@ -1502,6 +1522,17 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             const SizedBox(height: 8),
             _ExpandableDescription(
               description: _stripHtmlTags(game.description!),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 16),
+          ],
+
+          // Location Editor (only for owned games)
+          if (widget.isOwned) ...[
+            LocationPicker(
+              initialLocation: game.location,
+              onLocationChanged: _saveLocation,
             ),
             const SizedBox(height: 16),
             const Divider(),
@@ -1593,21 +1624,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             const SizedBox(height: 16),
             const Divider(),
             const SizedBox(height: 16),
-          ],
-
-          // Location Editor (only for owned games)
-          if (widget.isOwned) ...[
-            Text(
-              'Set Location',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 8),
-            LocationPicker(
-              initialLocation: game.location,
-              onLocationChanged: _saveLocation,
-            ),
           ],
         ],
       ),
@@ -2077,11 +2093,13 @@ class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+  final Color? valueColor;
 
   const _InfoRow({
     required this.icon,
     required this.label,
     required this.value,
+    this.valueColor,
   });
 
   @override
@@ -2090,7 +2108,7 @@ class _InfoRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
+          Icon(icon, size: 20, color: valueColor ?? Colors.grey[600]),
           const SizedBox(width: 8),
           Text(
             '$label: ',
@@ -2101,9 +2119,10 @@ class _InfoRow extends StatelessWidget {
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w500,
+              color: valueColor,
             ),
           ),
         ],

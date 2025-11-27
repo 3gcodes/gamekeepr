@@ -24,7 +24,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -52,7 +52,8 @@ class DatabaseService {
         base_game TEXT,
         expansions TEXT,
         owned INTEGER NOT NULL DEFAULT 1,
-        wishlisted INTEGER NOT NULL DEFAULT 0
+        wishlisted INTEGER NOT NULL DEFAULT 0,
+        has_nfc_tag INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -195,6 +196,13 @@ class DatabaseService {
         CREATE INDEX idx_scheduled_date ON scheduled_games(scheduled_date_time)
       ''');
     }
+
+    if (oldVersion < 9) {
+      // Add has_nfc_tag column for version 9 - default to 0 (false) for existing games
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN has_nfc_tag INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
   }
 
   Future<Game> insertGame(Game game) async {
@@ -288,6 +296,16 @@ class DatabaseService {
     return await db.update(
       'games',
       {'wishlisted': wishlisted ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [gameId],
+    );
+  }
+
+  Future<int> updateGameHasNfcTag(int gameId, bool hasNfcTag) async {
+    final db = await database;
+    return await db.update(
+      'games',
+      {'has_nfc_tag': hasNfcTag ? 1 : 0},
       where: 'id = ?',
       whereArgs: [gameId],
     );
