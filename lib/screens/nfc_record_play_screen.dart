@@ -55,6 +55,16 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
 
       if (mounted) {
         if (game != null && game.id != null) {
+          // Get database service
+          final db = ref.read(databaseServiceProvider);
+
+          // Mark game as having an NFC tag if not already set
+          if (!game.hasNfcTag) {
+            await db.updateGameHasNfcTag(game.id!, true);
+            // Reload games to reflect the change
+            ref.read(gamesProvider.notifier).loadGames();
+          }
+
           // Ask if they won
           final won = await showDialog<bool>(
             context: context,
@@ -82,7 +92,6 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
           }
 
           // Record the play with today's date
-          final db = ref.read(databaseServiceProvider);
           final play = Play(
             gameId: game.id!,
             datePlayed: DateTime.now(),

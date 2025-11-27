@@ -68,6 +68,14 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
 
         if (mounted) {
           if (game != null) {
+            // Mark game as having an NFC tag if not already set
+            if (!game.hasNfcTag && game.id != null) {
+              final db = ref.read(databaseServiceProvider);
+              await db.updateGameHasNfcTag(game.id!, true);
+              // Reload games to reflect the change
+              ref.read(gamesProvider.notifier).loadGames();
+            }
+
             // Navigate to game details
             Navigator.pushReplacement(
               context,
