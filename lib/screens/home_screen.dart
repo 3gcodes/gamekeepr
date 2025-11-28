@@ -10,11 +10,13 @@ import 'game_details_screen.dart';
 import 'settings_screen.dart';
 import 'nfc_scan_screen.dart';
 import 'nfc_record_play_screen.dart';
+import 'nfc_loan_game_screen.dart';
 import 'write_shelf_tag_screen.dart';
 import 'bgg_search_screen.dart';
 import 'wishlist_screen.dart';
 import 'scheduled_games_screen.dart';
 import 'move_games_screen.dart';
+import 'active_loans_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -213,6 +215,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             },
           ),
           ListTile(
+            leading: const Icon(Icons.handshake),
+            title: const Text('Loaned Games'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ActiveLoansScreen()),
+              );
+            },
+          ),
+          ListTile(
             leading: const Icon(Icons.drive_file_move),
             title: const Text('Move Game(s)'),
             onTap: () {
@@ -299,6 +312,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   context,
                   MaterialPageRoute(builder: (_) => const NfcRecordPlayScreen()),
                 );
+              } else if (value == 'loan_game') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const NfcLoanGameScreen()),
+                );
               } else if (value == 'write_shelf') {
                 Navigator.push(
                   context,
@@ -314,6 +332,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Icon(Icons.event_available),
                     SizedBox(width: 12),
                     Text('Record Play'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'loan_game',
+                child: Row(
+                  children: [
+                    Icon(Icons.handshake),
+                    SizedBox(width: 12),
+                    Text('Loan Game'),
                   ],
                 ),
               ),
@@ -361,6 +389,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
+                            // Reset search filter checkboxes
+                            ref.read(searchCategoriesProvider.notifier).state = false;
+                            ref.read(searchMechanicsProvider.notifier).state = false;
                           },
                         )
                       : null,
@@ -370,6 +401,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
+            // Search filter checkboxes
+            if (_searchController.text.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text('Categories', style: TextStyle(fontSize: 14)),
+                        value: ref.watch(searchCategoriesProvider),
+                        onChanged: (value) {
+                          ref.read(searchCategoriesProvider.notifier).state = value ?? false;
+                        },
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text('Mechanics', style: TextStyle(fontSize: 14)),
+                        value: ref.watch(searchMechanicsProvider),
+                        onChanged: (value) {
+                          ref.read(searchMechanicsProvider.notifier).state = value ?? false;
+                        },
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           Expanded(
             child: _buildTabContent(currentTab, filteredGames, allGames, filteredRecentlyPlayed),
           ),
@@ -382,6 +446,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ref.read(currentViewTabProvider.notifier).state = index;
           // Clear search when switching tabs
           _searchController.clear();
+          // Reset search filter checkboxes
+          ref.read(searchCategoriesProvider.notifier).state = false;
+          ref.read(searchMechanicsProvider.notifier).state = false;
         },
         items: const [
           BottomNavigationBarItem(

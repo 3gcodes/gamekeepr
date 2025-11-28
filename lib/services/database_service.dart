@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import '../models/game.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
+import '../models/game_loan.dart';
+import '../models/game_with_loan_info.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -24,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -109,6 +111,29 @@ class DatabaseService {
     // Create index on scheduled_date_time for sorting
     await db.execute('''
       CREATE INDEX idx_scheduled_date ON scheduled_games(scheduled_date_time)
+    ''');
+
+    // Create game_loans table
+    await db.execute('''
+      CREATE TABLE game_loans (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id INTEGER NOT NULL,
+        borrower_name TEXT NOT NULL,
+        loan_date TEXT NOT NULL,
+        return_date TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Create index on game_id for faster lookups
+    await db.execute('''
+      CREATE INDEX idx_loan_game_id ON game_loans(game_id)
+    ''');
+
+    // Create index on loan_date for sorting
+    await db.execute('''
+      CREATE INDEX idx_loan_date ON game_loans(loan_date)
     ''');
   }
 
@@ -201,6 +226,29 @@ class DatabaseService {
       // Add has_nfc_tag column for version 9 - default to 0 (false) for existing games
       await db.execute('''
         ALTER TABLE games ADD COLUMN has_nfc_tag INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
+
+    if (oldVersion < 10) {
+      // Add game_loans table for version 10
+      await db.execute('''
+        CREATE TABLE game_loans (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          game_id INTEGER NOT NULL,
+          borrower_name TEXT NOT NULL,
+          loan_date TEXT NOT NULL,
+          return_date TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_loan_game_id ON game_loans(game_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_loan_date ON game_loans(loan_date)
       ''');
     }
   }
@@ -541,6 +589,132 @@ class DatabaseService {
     );
     if (maps.isEmpty) return null;
     return ScheduledGame.fromMap(maps.first);
+  }
+
+  // ==================== Game Loans Methods ====================
+
+  /// Insert a new game loan
+  Future<GameLoan> insertGameLoan(GameLoan loan) async {
+    final db = await database;
+    final id = await db.insert(
+      'game_loans',
+      loan.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return loan.copyWith(id: id);
+  }
+
+  /// Get all loans for a specific game
+  Future<List<GameLoan>> getLoansForGame(int gameId) async {
+    final db = await database;
+    final maps = await db.query(
+      'game_loans',
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'loan_date DESC',
+    );
+    return maps.map((map) => GameLoan.fromMap(map)).toList();
+  }
+
+  /// Get active loan for a game (if any)
+  Future<GameLoan?> getActiveLoanForGame(int gameId) async {
+    final db = await database;
+    final maps = await db.query(
+      'game_loans',
+      where: 'game_id = ? AND return_date IS NULL',
+      whereArgs: [gameId],
+      orderBy: 'loan_date DESC',
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return GameLoan.fromMap(maps.first);
+  }
+
+  /// Get all active loans (games currently loaned out)
+  Future<List<GameLoan>> getAllActiveLoans() async {
+    final db = await database;
+    final maps = await db.query(
+      'game_loans',
+      where: 'return_date IS NULL',
+      orderBy: 'loan_date DESC',
+    );
+    return maps.map((map) => GameLoan.fromMap(map)).toList();
+  }
+
+  /// Get all active loans with game information
+  Future<List<GameWithLoanInfo>> getActiveLoansWithGameInfo() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT
+        g.*,
+        l.id as loan_id,
+        l.borrower_name,
+        l.loan_date,
+        l.return_date,
+        l.created_at as loan_created_at
+      FROM games g
+      INNER JOIN game_loans l ON g.id = l.game_id
+      WHERE l.return_date IS NULL
+      ORDER BY l.loan_date DESC
+    ''');
+
+    return result.map((map) {
+      final game = Game.fromMap(map);
+      final loan = GameLoan(
+        id: map['loan_id'] as int?,
+        gameId: game.id!,
+        borrowerName: map['borrower_name'] as String,
+        loanDate: DateTime.parse(map['loan_date'] as String),
+        returnDate: map['return_date'] != null
+            ? DateTime.parse(map['return_date'] as String)
+            : null,
+        createdAt: DateTime.parse(map['loan_created_at'] as String),
+      );
+      return GameWithLoanInfo(game: game, activeLoan: loan);
+    }).toList();
+  }
+
+  /// Update a loan (typically to mark as returned)
+  Future<void> updateGameLoan(GameLoan loan) async {
+    final db = await database;
+    await db.update(
+      'game_loans',
+      loan.toMap(),
+      where: 'id = ?',
+      whereArgs: [loan.id],
+    );
+  }
+
+  /// Mark a loan as returned
+  Future<void> returnGame(int loanId) async {
+    final db = await database;
+    await db.update(
+      'game_loans',
+      {'return_date': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [loanId],
+    );
+  }
+
+  /// Delete a loan record
+  Future<void> deleteGameLoan(int loanId) async {
+    final db = await database;
+    await db.delete(
+      'game_loans',
+      where: 'id = ?',
+      whereArgs: [loanId],
+    );
+  }
+
+  /// Get all unique borrower names for autocomplete
+  Future<List<String>> getAllBorrowerNames() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT DISTINCT borrower_name
+      FROM game_loans
+      ORDER BY borrower_name ASC
+    ''');
+    return result.map((row) => row['borrower_name'] as String).toList();
   }
 
   Future<void> close() async {

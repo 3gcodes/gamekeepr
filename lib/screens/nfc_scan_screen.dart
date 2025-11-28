@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
+import '../models/game.dart';
+import '../widgets/loan_game_dialog.dart';
 import 'game_details_screen.dart';
 import 'shelf_view_screen.dart';
 
@@ -76,13 +78,8 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
               ref.read(gamesProvider.notifier).loadGames();
             }
 
-            // Navigate to game details
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) => GameDetailsScreen(game: game),
-              ),
-            );
+            // Show action dialog
+            await _showGameActionDialog(game);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -109,6 +106,67 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
     setState(() {
       _isScanning = false;
     });
+  }
+
+  Future<void> _showGameActionDialog(Game game) async {
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(game.name),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('What would you like to do?'),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.info_outline, color: Colors.blue),
+              title: const Text('View Details'),
+              onTap: () => Navigator.pop(context, 'details'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.handshake, color: Colors.green),
+              title: const Text('Loan Game'),
+              onTap: () => Navigator.pop(context, 'loan'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (action == 'details') {
+      // Navigate to game details
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GameDetailsScreen(game: game),
+        ),
+      );
+    } else if (action == 'loan') {
+      // Show loan dialog
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => LoanGameDialog(game: game),
+      );
+
+      if (result == true && mounted) {
+        Navigator.pop(context);
+      } else if (mounted) {
+        // User cancelled the loan, go back to home
+        Navigator.pop(context);
+      }
+    } else {
+      // User cancelled, go back
+      Navigator.pop(context);
+    }
   }
 
   @override

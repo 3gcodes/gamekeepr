@@ -25,8 +25,6 @@ class _WishlistScreenState extends ConsumerState<WishlistScreen> {
 
   @override
   void dispose() {
-    // Clear search when leaving
-    ref.read(searchQueryProvider.notifier).state = '';
     _searchController.dispose();
     super.dispose();
   }

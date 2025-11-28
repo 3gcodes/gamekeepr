@@ -9,8 +9,10 @@ import 'package:http/http.dart' as http;
 import '../models/game.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
+import '../models/game_loan.dart';
 import '../providers/app_providers.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/loan_game_dialog.dart';
 import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
@@ -34,13 +36,15 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
   bool _isLoadingPlays = false;
   List<ScheduledGame> _scheduledGames = [];
   bool _isLoadingScheduled = false;
+  List<GameLoan> _loans = [];
+  bool _isLoadingLoans = false;
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
     _detailedGame = widget.game;
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
 
     // Fetch details once if we don't have them
     if (_needsDetails(widget.game)) {
@@ -52,6 +56,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
     // Load scheduled games for this game
     _loadScheduledGames();
+
+    // Load loan history for this game
+    _loadLoans();
   }
 
   @override
@@ -173,6 +180,34 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       if (mounted) {
         setState(() {
           _isLoadingScheduled = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLoans() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    setState(() {
+      _isLoadingLoans = true;
+    });
+
+    try {
+      final loans = await ref
+          .read(loansProvider.notifier)
+          .getLoansForGame(game.id!);
+
+      if (mounted) {
+        setState(() {
+          _loans = loans;
+          _isLoadingLoans = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingLoans = false;
         });
       }
     }
@@ -1887,6 +1922,321 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     );
   }
 
+  Widget _buildLoansTab() {
+    if (_isLoadingLoans) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final activeLoan = _loans.where((loan) => loan.isActive).firstOrNull;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Active loan banner
+          if (activeLoan != null) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.orange[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange[300]!),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange[700]),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Currently Loaned',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[900],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Borrowed by: ${activeLoan.borrowerName}',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  Text(
+                    'Since: ${DateFormat('MMM d, yyyy').format(activeLoan.loanDate)}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Return Game'),
+                            content: Text(
+                              'Mark this game as returned from ${activeLoan.borrowerName}?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                child: const Text('Return'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirmed == true) {
+                          try {
+                            await ref.read(loansProvider.notifier).returnGame(activeLoan.id!);
+                            await _loadLoans();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Game marked as returned'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error returning game: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      icon: const Icon(Icons.assignment_return),
+                      label: const Text('Mark as Returned'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Loan button (only if not currently loaned)
+          if (activeLoan == null)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => LoanGameDialog(game: _detailedGame!),
+                  );
+
+                  if (result == true) {
+                    await _loadLoans();
+                  }
+                },
+                icon: const Icon(Icons.handshake),
+                label: const Text('Loan Game'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          const SizedBox(height: 24),
+
+          // Loan history
+          Text(
+            'Loan History',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[800],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          if (_loans.isEmpty)
+            Center(
+              child: Column(
+                children: [
+                  const SizedBox(height: 32),
+                  Icon(
+                    Icons.history,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No loan history',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap the button above to loan this game',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          else
+            Column(
+              children: _loans.map((loan) {
+                final isActive = loan.isActive;
+                final daysLoaned = loan.isActive
+                    ? DateTime.now().difference(loan.loanDate).inDays
+                    : loan.returnDate!.difference(loan.loanDate).inDays;
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isActive ? Colors.orange[50] : Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        isActive ? Icons.handshake : Icons.assignment_return,
+                        color: isActive ? Colors.orange[700] : Colors.green[700],
+                      ),
+                    ),
+                    title: Text(
+                      loan.borrowerName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.calendar_today, size: 14, color: Colors.grey[600]),
+                            const SizedBox(width: 4),
+                            Text('Loaned: ${DateFormat('MMM d, yyyy').format(loan.loanDate)}'),
+                          ],
+                        ),
+                        if (!isActive) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.assignment_return, size: 14, color: Colors.grey[600]),
+                              const SizedBox(width: 4),
+                              Text('Returned: ${DateFormat('MMM d, yyyy').format(loan.returnDate!)}'),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 4),
+                        Text(
+                          '$daysLoaned ${daysLoaned == 1 ? 'day' : 'days'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: isActive
+                        ? Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Active',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange[900],
+                              ),
+                            ),
+                          )
+                        : IconButton(
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            tooltip: 'Delete loan record',
+                            onPressed: () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Delete Loan Record'),
+                                  content: Text(
+                                    'Delete this loan record from ${loan.borrowerName}?',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirmed == true) {
+                                try {
+                                  await ref.read(loansProvider.notifier).deleteLoan(loan.id!);
+                                  await _loadLoans();
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Loan record deleted'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Error deleting loan: $e'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                }
+                              }
+                            },
+                          ),
+                    isThreeLine: true,
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _detailedGame ?? widget.game;
@@ -2034,9 +2384,10 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             unselectedLabelColor: Colors.grey,
             indicatorColor: Theme.of(context).primaryColor,
             tabs: const [
-              Tab(text: 'Details'),
-              Tab(text: 'Play History'),
-              Tab(text: 'Scheduled'),
+              Tab(icon: Icon(Icons.info_outline)),
+              Tab(icon: Icon(Icons.history)),
+              Tab(icon: Icon(Icons.event)),
+              Tab(icon: Icon(Icons.handshake_outlined)),
             ],
           ),
 
@@ -2048,6 +2399,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 _buildDetailsTab(game),
                 _buildPlayHistoryTab(),
                 _buildScheduledTab(),
+                _buildLoansTab(),
               ],
             ),
           ),

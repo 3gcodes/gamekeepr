@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/game.dart';
 import '../models/game_with_play_info.dart';
 import '../models/scheduled_game.dart';
+import '../models/game_loan.dart';
+import '../models/game_with_loan_info.dart';
 import '../services/database_service.dart';
 import '../services/bgg_service.dart';
 import '../services/nfc_service.dart';
@@ -171,8 +173,42 @@ enum ExpansionFilter {
   all,            // Show everything
 }
 
+// Helper function to check if a game matches the search query
+bool _gameMatchesSearch(Game game, String query, bool searchCategories, bool searchMechanics) {
+  final lowerQuery = query.toLowerCase();
+
+  // Always search name
+  if (game.name.toLowerCase().contains(lowerQuery)) {
+    return true;
+  }
+
+  // Search categories if enabled
+  if (searchCategories && game.categories != null) {
+    for (var category in game.categories!) {
+      if (category.toLowerCase().contains(lowerQuery)) {
+        return true;
+      }
+    }
+  }
+
+  // Search mechanics if enabled
+  if (searchMechanics && game.mechanics != null) {
+    for (var mechanic in game.mechanics!) {
+      if (mechanic.toLowerCase().contains(lowerQuery)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 // Search Query Provider
 final searchQueryProvider = StateProvider<String>((ref) => '');
+
+// Search Filter Providers
+final searchCategoriesProvider = StateProvider<bool>((ref) => false);
+final searchMechanicsProvider = StateProvider<bool>((ref) => false);
 
 // Expansion Filter Provider
 final expansionFilterProvider = StateProvider<ExpansionFilter>((ref) => ExpansionFilter.baseGames);
@@ -182,6 +218,8 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
   final expansionFilter = ref.watch(expansionFilterProvider);
+  final searchCategories = ref.watch(searchCategoriesProvider);
+  final searchMechanics = ref.watch(searchMechanicsProvider);
 
   return games.when(
     data: (gamesList) {
@@ -206,7 +244,7 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
       // Apply search filter
       if (query.isNotEmpty) {
         filtered = filtered
-            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
             .toList();
       }
 
@@ -222,6 +260,8 @@ final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
   final expansionFilter = ref.watch(expansionFilterProvider);
+  final searchCategories = ref.watch(searchCategoriesProvider);
+  final searchMechanics = ref.watch(searchMechanicsProvider);
 
   return games.when(
     data: (gamesList) {
@@ -246,7 +286,7 @@ final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
       // Apply search filter
       if (query.isNotEmpty) {
         filtered = filtered
-            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
             .toList();
       }
 
@@ -261,6 +301,8 @@ final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
 final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
+  final searchCategories = ref.watch(searchCategoriesProvider);
+  final searchMechanics = ref.watch(searchMechanicsProvider);
 
   return games.when(
     data: (gamesList) {
@@ -270,7 +312,7 @@ final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
       // Apply search filter
       if (query.isNotEmpty) {
         filtered = filtered
-            .where((game) => game.name.toLowerCase().contains(query.toLowerCase()))
+            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
             .toList();
       }
 
@@ -310,6 +352,8 @@ class RecentlyPlayedGamesNotifier extends StateNotifier<AsyncValue<List<GameWith
 final filteredRecentlyPlayedGamesProvider = Provider<AsyncValue<List<GameWithPlayInfo>>>((ref) {
   final games = ref.watch(recentlyPlayedGamesProvider);
   final query = ref.watch(searchQueryProvider);
+  final searchCategories = ref.watch(searchCategoriesProvider);
+  final searchMechanics = ref.watch(searchMechanicsProvider);
 
   if (query.isEmpty) {
     return games;
@@ -318,7 +362,7 @@ final filteredRecentlyPlayedGamesProvider = Provider<AsyncValue<List<GameWithPla
   return games.when(
     data: (gamesList) {
       final filtered = gamesList
-          .where((gameWithInfo) => gameWithInfo.game.name.toLowerCase().contains(query.toLowerCase()))
+          .where((gameWithInfo) => _gameMatchesSearch(gameWithInfo.game, query, searchCategories, searchMechanics))
           .toList();
       return AsyncValue.data(filtered);
     },
@@ -396,3 +440,77 @@ class ScheduledGamesNotifier extends StateNotifier<AsyncValue<List<ScheduledGame
     await loadScheduledGames();
   }
 }
+
+// Game Loans Provider
+final loansProvider = StateNotifierProvider<LoansNotifier, AsyncValue<List<GameWithLoanInfo>>>((ref) {
+  return LoansNotifier(ref);
+});
+
+class LoansNotifier extends StateNotifier<AsyncValue<List<GameWithLoanInfo>>> {
+  final Ref ref;
+
+  LoansNotifier(this.ref) : super(const AsyncValue.loading()) {
+    loadActiveLoans();
+  }
+
+  Future<void> loadActiveLoans() async {
+    state = const AsyncValue.loading();
+    try {
+      final db = ref.read(databaseServiceProvider);
+      final loans = await db.getActiveLoansWithGameInfo();
+      state = AsyncValue.data(loans);
+    } catch (e, stack) {
+      state = AsyncValue.error(e, stack);
+    }
+  }
+
+  Future<List<GameLoan>> getLoansForGame(int gameId) async {
+    final db = ref.read(databaseServiceProvider);
+    return await db.getLoansForGame(gameId);
+  }
+
+  Future<GameLoan?> getActiveLoanForGame(int gameId) async {
+    final db = ref.read(databaseServiceProvider);
+    return await db.getActiveLoanForGame(gameId);
+  }
+
+  Future<GameLoan> loanGame({
+    required int gameId,
+    required String borrowerName,
+    required DateTime loanDate,
+  }) async {
+    final db = ref.read(databaseServiceProvider);
+    final loan = GameLoan(
+      gameId: gameId,
+      borrowerName: borrowerName,
+      loanDate: loanDate,
+    );
+    final saved = await db.insertGameLoan(loan);
+    await loadActiveLoans();
+    return saved;
+  }
+
+  Future<void> returnGame(int loanId) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.returnGame(loanId);
+    await loadActiveLoans();
+  }
+
+  Future<void> updateLoan(GameLoan loan) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.updateGameLoan(loan);
+    await loadActiveLoans();
+  }
+
+  Future<void> deleteLoan(int loanId) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.deleteGameLoan(loanId);
+    await loadActiveLoans();
+  }
+}
+
+// Borrower Names Provider (for autocomplete)
+final borrowerNamesProvider = FutureProvider<List<String>>((ref) async {
+  final db = ref.watch(databaseServiceProvider);
+  return await db.getAllBorrowerNames();
+});
