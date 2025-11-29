@@ -98,6 +98,8 @@ class Game {
   }
 
   factory Game.fromMap(Map<String, dynamic> map) {
+    final baseGameJson = map['base_game'] as String?;
+
     return Game(
       id: map['id'] as int?,
       bggId: map['bgg_id'] as int,
@@ -121,8 +123,8 @@ class Game {
       mechanics: map['mechanics'] != null
           ? List<String>.from(jsonDecode(map['mechanics'] as String))
           : null,
-      baseGame: map['base_game'] != null
-          ? ExpansionReference.fromMap(jsonDecode(map['base_game'] as String))
+      baseGame: baseGameJson != null
+          ? ExpansionReference.fromMap(jsonDecode(baseGameJson))
           : null,
       expansions: map['expansions'] != null
           ? (jsonDecode(map['expansions'] as String) as List)
