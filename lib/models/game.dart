@@ -185,12 +185,16 @@ class Game {
 
   String get playersInfo {
     if (minPlayers == null && maxPlayers == null) return 'Unknown';
+    if (minPlayers == null) return '$maxPlayers players';
+    if (maxPlayers == null) return '$minPlayers players';
     if (minPlayers == maxPlayers) return '$minPlayers players';
     return '$minPlayers-$maxPlayers players';
   }
 
   String get playtimeInfo {
     if (minPlaytime == null && maxPlaytime == null) return 'Unknown';
+    if (minPlaytime == null) return '$maxPlaytime min';
+    if (maxPlaytime == null) return '$minPlaytime min';
     if (minPlaytime == maxPlaytime) return '$minPlaytime min';
     return '$minPlaytime-$maxPlaytime min';
   }

@@ -1035,8 +1035,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     });
 
     try {
-      print('📖 Fetching details for game ${widget.game.bggId}...');
-
       // Ensure token is loaded before using the service
       final bggService = ref.read(bggServiceProvider);
       final prefs = await ref.read(sharedPreferencesProvider.future);
@@ -1057,14 +1055,14 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       final db = ref.read(databaseServiceProvider);
       await db.updateGame(updatedGame);
 
+      // Refresh the games provider so the list updates
+      ref.read(gamesProvider.notifier).loadGames();
+
       setState(() {
         _detailedGame = updatedGame;
         _isLoadingDetails = false;
       });
-
-      print('✅ Fetched and saved details for ${widget.game.name}');
     } catch (e) {
-      print('❌ Error fetching game details: $e');
       setState(() {
         _isLoadingDetails = false;
       });
@@ -1096,7 +1094,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
         _isLoadingPlays = false;
       });
     } catch (e) {
-      print('❌ Error loading plays: $e');
       setState(() {
         _isLoadingPlays = false;
       });
@@ -1409,7 +1406,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
     // Skip availability check - isAvailable() has bugs on some iOS versions
     // The native dialog appearing confirms NFC is actually working
-    print('📱 Skipping NFC availability check...');
 
     // Show dialog
     if (mounted) {
@@ -1430,16 +1426,12 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       );
     }
 
-    print('📱 Dialog shown, about to start NFC write...');
-
     // Small delay to ensure dialog is visible
     await Future.delayed(const Duration(milliseconds: 500));
 
     try {
       // Use BGG ID for the NFC tag
-      print('📱 Calling writeGameId for BGG ID: ${widget.game.bggId}');
       final success = await nfcService.writeGameId(widget.game.bggId);
-      print('📱 writeGameId returned: $success');
 
       if (mounted) {
         Navigator.pop(context); // Close dialog
