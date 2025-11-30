@@ -567,6 +567,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
 
         return ListView.builder(
+          key: const PageStorageKey('collection_list'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemCount: games.length,
           itemBuilder: (context, index) {
@@ -661,6 +662,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
 
         return ListView.builder(
+          key: const PageStorageKey('all_games_list'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemCount: games.length,
           itemBuilder: (context, index) {
@@ -743,6 +745,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
 
         return ListView.builder(
+          key: const PageStorageKey('recently_played_list'),
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           itemCount: gamesWithPlayInfo.length,
           itemBuilder: (context, index) {
