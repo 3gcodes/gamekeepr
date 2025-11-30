@@ -2328,7 +2328,6 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
                   : const Icon(Icons.sync),
