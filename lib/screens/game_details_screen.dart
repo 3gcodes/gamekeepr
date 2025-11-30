@@ -73,10 +73,20 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
   bool _needsDetails(Game game) {
     // If we don't have description, categories, mechanics, or expansion info, we need details
-    return game.description == null ||
-           game.categories == null ||
-           game.mechanics == null ||
-           (game.baseGame == null && game.expansions == null);
+    if (game.description == null ||
+        game.categories == null ||
+        game.mechanics == null ||
+        (game.baseGame == null && game.expansions == null)) {
+      return true;
+    }
+
+    // Auto-sync if never synced or synced more than 7 days ago
+    if (game.lastSynced == null) {
+      return true;
+    }
+
+    final daysSinceSync = DateTime.now().difference(game.lastSynced!).inDays;
+    return daysSinceSync >= 7;
   }
 
   Future<void> _toggleWishlist() async {
