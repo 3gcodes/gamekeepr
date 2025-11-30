@@ -13,6 +13,7 @@ import '../models/game_loan.dart';
 import '../providers/app_providers.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/loan_game_dialog.dart';
+import '../widgets/game_tags_widget.dart';
 import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
@@ -44,7 +45,10 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
   void initState() {
     super.initState();
     _detailedGame = widget.game;
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(
+      length: 5,
+      vsync: this,
+    );
 
     // Fetch details once if we don't have them
     if (_needsDetails(widget.game)) {
@@ -2229,6 +2233,12 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     );
   }
 
+  Widget _buildTagsTab() {
+    return SingleChildScrollView(
+      child: GameTagsWidget(game: _detailedGame ?? widget.game),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _detailedGame ?? widget.game;
@@ -2380,6 +2390,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
               Tab(icon: Icon(Icons.history)),
               Tab(icon: Icon(Icons.event)),
               Tab(icon: Icon(Icons.handshake_outlined)),
+              Tab(icon: Icon(Icons.label_outline)),
             ],
           ),
 
@@ -2392,6 +2403,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 _buildPlayHistoryTab(),
                 _buildScheduledTab(),
                 _buildLoansTab(),
+                _buildTagsTab(),
               ],
             ),
           ),

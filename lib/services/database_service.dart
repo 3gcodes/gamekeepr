@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -134,6 +134,27 @@ class DatabaseService {
     // Create index on loan_date for sorting
     await db.execute('''
       CREATE INDEX idx_loan_date ON game_loans(loan_date)
+    ''');
+
+    // Create game_tags table
+    await db.execute('''
+      CREATE TABLE game_tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        game_id INTEGER NOT NULL,
+        tag TEXT NOT NULL,
+        FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE,
+        UNIQUE(game_id, tag)
+      )
+    ''');
+
+    // Create index on game_id for faster lookups
+    await db.execute('''
+      CREATE INDEX idx_tag_game_id ON game_tags(game_id)
+    ''');
+
+    // Create index on tag for faster searches and autocomplete
+    await db.execute('''
+      CREATE INDEX idx_tag ON game_tags(tag)
     ''');
   }
 
@@ -249,6 +270,27 @@ class DatabaseService {
 
       await db.execute('''
         CREATE INDEX idx_loan_date ON game_loans(loan_date)
+      ''');
+    }
+
+    if (oldVersion < 11) {
+      // Add game_tags table for version 11
+      await db.execute('''
+        CREATE TABLE game_tags (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          game_id INTEGER NOT NULL,
+          tag TEXT NOT NULL,
+          FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE,
+          UNIQUE(game_id, tag)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_tag_game_id ON game_tags(game_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_tag ON game_tags(tag)
       ''');
     }
   }
@@ -715,6 +757,111 @@ class DatabaseService {
       ORDER BY borrower_name ASC
     ''');
     return result.map((row) => row['borrower_name'] as String).toList();
+  }
+
+  // ==================== Game Tags Methods ====================
+
+  /// Add a tag to a game
+  Future<void> addTagToGame(int gameId, String tag) async {
+    final db = await database;
+    await db.insert(
+      'game_tags',
+      {'game_id': gameId, 'tag': tag.trim().toLowerCase()},
+      conflictAlgorithm: ConflictAlgorithm.ignore, // Ignore if tag already exists
+    );
+  }
+
+  /// Add multiple tags to a game at once
+  Future<void> addTagsToGame(int gameId, List<String> tags) async {
+    final db = await database;
+    final batch = db.batch();
+    for (final tag in tags) {
+      batch.insert(
+        'game_tags',
+        {'game_id': gameId, 'tag': tag.trim().toLowerCase()},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Remove a tag from a game
+  Future<void> removeTagFromGame(int gameId, String tag) async {
+    final db = await database;
+    await db.delete(
+      'game_tags',
+      where: 'game_id = ? AND tag = ?',
+      whereArgs: [gameId, tag.toLowerCase()],
+    );
+  }
+
+  /// Get all tags for a specific game
+  Future<List<String>> getTagsForGame(int gameId) async {
+    final db = await database;
+    final result = await db.query(
+      'game_tags',
+      columns: ['tag'],
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'tag ASC',
+    );
+    return result.map((row) => row['tag'] as String).toList();
+  }
+
+  /// Get all unique tags (for autocomplete)
+  Future<List<String>> getAllUniqueTags() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT DISTINCT tag
+      FROM game_tags
+      ORDER BY tag ASC
+    ''');
+    return result.map((row) => row['tag'] as String).toList();
+  }
+
+  /// Get all games with a specific tag
+  Future<List<Game>> getGamesByTag(String tag) async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT g.*
+      FROM games g
+      INNER JOIN game_tags t ON g.id = t.game_id
+      WHERE t.tag = ?
+      ORDER BY g.name ASC
+    ''', [tag.toLowerCase()]);
+    return result.map((map) => Game.fromMap(map)).toList();
+  }
+
+  /// Get the count of games using a specific tag
+  Future<int> getTagUsageCount(String tag) async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT COUNT(DISTINCT game_id) as count
+      FROM game_tags
+      WHERE tag = ?
+    ''', [tag.toLowerCase()]);
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Rename a tag across all games
+  Future<void> renameTag(String oldTag, String newTag) async {
+    final db = await database;
+    await db.update(
+      'game_tags',
+      {'tag': newTag.trim().toLowerCase()},
+      where: 'tag = ?',
+      whereArgs: [oldTag.toLowerCase()],
+    );
+  }
+
+  /// Delete a tag from all games
+  Future<void> deleteTagFromAllGames(String tag) async {
+    final db = await database;
+    await db.delete(
+      'game_tags',
+      where: 'tag = ?',
+      whereArgs: [tag.toLowerCase()],
+    );
   }
 
   Future<void> close() async {

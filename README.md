@@ -22,13 +22,21 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
   - **Wishlist**: Dedicated view for games you want to add to your collection
   - **Scheduled Games**: See all upcoming game sessions in one place
 - **Smart Filtering**: Filter by base games only, expansions only, or show all
-- **Search**: Fast local search across your entire collection
+- **Search**: Fast local search across your entire collection with optional filters for categories, mechanics, and tags
 
 ### Physical Location Tracking
 - **Shelf & Bay System**: Track game locations using a shelf/bay format (e.g., "A1" = Shelf A, Bay 1)
 - **Visual Location Picker**: Easy-to-use grid picker for selecting locations
 - **Shelf View**: See all games on a specific shelf, grouped by bay
 - **NFC Shelf Tags**: Write shelf locations to NFC tags for quick navigation
+
+### Game Tagging
+- **Custom Tags**: Add custom tags to organize your games (e.g., "party", "family-friendly", "quick-play")
+- **Multi-Tag Support**: Add multiple tags to each game separated by commas
+- **Color-Coded Display**: Tags are automatically color-coded for easy visual identification
+- **Tag Management**: Centralized screen to rename or delete tags across your entire collection
+- **Usage Tracking**: See how many games each tag is applied to before deleting
+- **Searchable**: Search your collection by tags along with categories and mechanics
 
 ### NFC Tag Support
 - **Game Tags**: Write game IDs to NFC tags in your game boxes
@@ -42,6 +50,14 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Play History**: View complete play history for each game
 - **Edit & Delete**: Modify or remove play records as needed
 - **Statistics**: See play count and win/loss record in the recently played view
+
+### Game Loan Tracking
+- **Loan Games**: Track which games you've lent out and to whom
+- **Borrower Management**: Free-text borrower names with autocomplete
+- **Active Loans View**: See all currently loaned games in one place (accessible from side menu)
+- **Loan History**: View complete loan history for each game including return dates
+- **NFC Loan Recording**: Scan a game tag to quickly create a loan record
+- **Return Tracking**: Mark games as returned with automatic date logging
 
 ### Game Scheduling & Sharing
 - **Schedule Sessions**: Plan future game sessions with date, time, and location
@@ -150,6 +166,27 @@ The app requires NFC capabilities. These are already configured in the project:
 1. Scan a shelf NFC tag, or
 2. Navigate to a game with a location set and tap the location badge
 
+### Using Game Tags
+
+#### Adding Tags to Games
+1. Open a game's details screen
+2. Navigate to the **Tags** tab (label icon)
+3. Type tags separated by commas (e.g., "party,family,quick")
+4. Press the **+** button or Enter to add
+5. Tags are automatically converted to lowercase for consistency
+
+#### Managing Tags
+1. Open the navigation drawer (menu icon)
+2. Tap **Manage Tags**
+3. View all tags with their usage counts
+4. **Rename a tag**: Tap the edit icon to rename across all games
+5. **Delete a tag**: Tap the delete icon (shows usage count in confirmation)
+
+#### Searching by Tags
+1. From the home screen, enter a search term
+2. Check the **Tags** checkbox that appears
+3. Search will now include matching tags
+
 ### Sharing Games
 
 #### Share a Game
@@ -190,11 +227,11 @@ Access all your upcoming game sessions from the side menu:
 
 ```
 lib/
-├── models/           # Data models (Game, Play, ScheduledGame)
+├── models/           # Data models (Game, Play, ScheduledGame, GameLoan)
 ├── providers/        # Riverpod providers and state management
-├── screens/          # UI screens
+├── screens/          # UI screens (home, game details, manage tags, etc.)
 ├── services/         # Business logic (Database, BGG API, NFC)
-├── widgets/          # Reusable UI components
+├── widgets/          # Reusable UI components (location picker, tag widget, etc.)
 └── constants/        # App constants
 ```
 

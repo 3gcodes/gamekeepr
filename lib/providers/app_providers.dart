@@ -174,7 +174,14 @@ enum ExpansionFilter {
 }
 
 // Helper function to check if a game matches the search query
-bool _gameMatchesSearch(Game game, String query, bool searchCategories, bool searchMechanics) {
+bool _gameMatchesSearch(
+  Game game,
+  String query,
+  bool searchCategories,
+  bool searchMechanics,
+  bool searchTags,
+  Map<int, List<String>> tagsMap,
+) {
   final lowerQuery = query.toLowerCase();
 
   // Always search name
@@ -200,6 +207,18 @@ bool _gameMatchesSearch(Game game, String query, bool searchCategories, bool sea
     }
   }
 
+  // Search tags if enabled
+  if (searchTags && game.id != null) {
+    final tags = tagsMap[game.id];
+    if (tags != null) {
+      for (var tag in tags) {
+        if (tag.toLowerCase().contains(lowerQuery)) {
+          return true;
+        }
+      }
+    }
+  }
+
   return false;
 }
 
@@ -209,6 +228,31 @@ final searchQueryProvider = StateProvider<String>((ref) => '');
 // Search Filter Providers
 final searchCategoriesProvider = StateProvider<bool>((ref) => false);
 final searchMechanicsProvider = StateProvider<bool>((ref) => false);
+final searchTagsProvider = StateProvider<bool>((ref) => false);
+
+// Game Tags Provider - loads all tags grouped by game ID
+final gameTagsMapProvider = FutureProvider<Map<int, List<String>>>((ref) async {
+  final db = ref.watch(databaseServiceProvider);
+  final games = await db.getAllGames();
+  final tagsMap = <int, List<String>>{};
+
+  for (final game in games) {
+    if (game.id != null) {
+      final tags = await db.getTagsForGame(game.id!);
+      if (tags.isNotEmpty) {
+        tagsMap[game.id!] = tags;
+      }
+    }
+  }
+
+  return tagsMap;
+});
+
+// All Unique Tags Provider (for autocomplete)
+final allUniqueTagsProvider = FutureProvider<List<String>>((ref) async {
+  final db = ref.watch(databaseServiceProvider);
+  return await db.getAllUniqueTags();
+});
 
 // Expansion Filter Provider
 final expansionFilterProvider = StateProvider<ExpansionFilter>((ref) => ExpansionFilter.baseGames);
@@ -220,6 +264,8 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final expansionFilter = ref.watch(expansionFilterProvider);
   final searchCategories = ref.watch(searchCategoriesProvider);
   final searchMechanics = ref.watch(searchMechanicsProvider);
+  final searchTags = ref.watch(searchTagsProvider);
+  final tagsMapAsync = ref.watch(gameTagsMapProvider);
 
   return games.when(
     data: (gamesList) {
@@ -243,8 +289,16 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
 
       // Apply search filter
       if (query.isNotEmpty) {
+        final tagsMap = tagsMapAsync.whenOrNull(data: (map) => map) ?? {};
         filtered = filtered
-            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
+            .where((game) => _gameMatchesSearch(
+                  game,
+                  query,
+                  searchCategories,
+                  searchMechanics,
+                  searchTags,
+                  tagsMap,
+                ))
             .toList();
       }
 
@@ -262,6 +316,8 @@ final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final expansionFilter = ref.watch(expansionFilterProvider);
   final searchCategories = ref.watch(searchCategoriesProvider);
   final searchMechanics = ref.watch(searchMechanicsProvider);
+  final searchTags = ref.watch(searchTagsProvider);
+  final tagsMapAsync = ref.watch(gameTagsMapProvider);
 
   return games.when(
     data: (gamesList) {
@@ -285,8 +341,16 @@ final allGamesFilteredProvider = Provider<AsyncValue<List<Game>>>((ref) {
 
       // Apply search filter
       if (query.isNotEmpty) {
+        final tagsMap = tagsMapAsync.whenOrNull(data: (map) => map) ?? {};
         filtered = filtered
-            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
+            .where((game) => _gameMatchesSearch(
+                  game,
+                  query,
+                  searchCategories,
+                  searchMechanics,
+                  searchTags,
+                  tagsMap,
+                ))
             .toList();
       }
 
@@ -303,6 +367,8 @@ final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final query = ref.watch(searchQueryProvider);
   final searchCategories = ref.watch(searchCategoriesProvider);
   final searchMechanics = ref.watch(searchMechanicsProvider);
+  final searchTags = ref.watch(searchTagsProvider);
+  final tagsMapAsync = ref.watch(gameTagsMapProvider);
 
   return games.when(
     data: (gamesList) {
@@ -311,8 +377,16 @@ final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
 
       // Apply search filter
       if (query.isNotEmpty) {
+        final tagsMap = tagsMapAsync.whenOrNull(data: (map) => map) ?? {};
         filtered = filtered
-            .where((game) => _gameMatchesSearch(game, query, searchCategories, searchMechanics))
+            .where((game) => _gameMatchesSearch(
+                  game,
+                  query,
+                  searchCategories,
+                  searchMechanics,
+                  searchTags,
+                  tagsMap,
+                ))
             .toList();
       }
 
@@ -354,6 +428,8 @@ final filteredRecentlyPlayedGamesProvider = Provider<AsyncValue<List<GameWithPla
   final query = ref.watch(searchQueryProvider);
   final searchCategories = ref.watch(searchCategoriesProvider);
   final searchMechanics = ref.watch(searchMechanicsProvider);
+  final searchTags = ref.watch(searchTagsProvider);
+  final tagsMapAsync = ref.watch(gameTagsMapProvider);
 
   if (query.isEmpty) {
     return games;
@@ -361,8 +437,16 @@ final filteredRecentlyPlayedGamesProvider = Provider<AsyncValue<List<GameWithPla
 
   return games.when(
     data: (gamesList) {
+      final tagsMap = tagsMapAsync.whenOrNull(data: (map) => map) ?? {};
       final filtered = gamesList
-          .where((gameWithInfo) => _gameMatchesSearch(gameWithInfo.game, query, searchCategories, searchMechanics))
+          .where((gameWithInfo) => _gameMatchesSearch(
+                gameWithInfo.game,
+                query,
+                searchCategories,
+                searchMechanics,
+                searchTags,
+                tagsMap,
+              ))
           .toList();
       return AsyncValue.data(filtered);
     },

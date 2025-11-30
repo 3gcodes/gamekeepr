@@ -17,6 +17,7 @@ import 'wishlist_screen.dart';
 import 'scheduled_games_screen.dart';
 import 'move_games_screen.dart';
 import 'active_loans_screen.dart';
+import 'manage_tags_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -236,6 +237,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               );
             },
           ),
+          ListTile(
+            leading: const Icon(Icons.label),
+            title: const Text('Manage Tags'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ManageTagsScreen()),
+              );
+            },
+          ),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.settings),
@@ -392,6 +404,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             // Reset search filter checkboxes
                             ref.read(searchCategoriesProvider.notifier).state = false;
                             ref.read(searchMechanicsProvider.notifier).state = false;
+                            ref.read(searchTagsProvider.notifier).state = false;
                           },
                         )
                       : null,
@@ -431,6 +444,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
                     ),
+                    Expanded(
+                      child: CheckboxListTile(
+                        title: const Text('Tags', style: TextStyle(fontSize: 14)),
+                        value: ref.watch(searchTagsProvider),
+                        onChanged: (value) {
+                          ref.read(searchTagsProvider.notifier).state = value ?? false;
+                        },
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -449,6 +474,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // Reset search filter checkboxes
           ref.read(searchCategoriesProvider.notifier).state = false;
           ref.read(searchMechanicsProvider.notifier).state = false;
+          ref.read(searchTagsProvider.notifier).state = false;
         },
         items: const [
           BottomNavigationBarItem(
