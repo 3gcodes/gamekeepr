@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../providers/app_providers.dart';
 import '../services/database_service.dart';
 
@@ -16,8 +17,11 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _usernameController;
   late TextEditingController _apiTokenController;
+  late TextEditingController _passwordController;
   bool _isSaving = false;
   bool _obscureToken = true;
+  bool _obscurePassword = true;
+  final _secureStorage = const FlutterSecureStorage();
 
   @override
   void initState() {
@@ -25,6 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // Initialize controllers immediately to avoid late initialization errors
     _usernameController = TextEditingController();
     _apiTokenController = TextEditingController();
+    _passwordController = TextEditingController();
     _loadCredentials();
   }
 
@@ -32,9 +37,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = await SharedPreferences.getInstance();
     final username = prefs.getString('bgg_username') ?? '';
     final apiToken = prefs.getString('bgg_api_token') ?? '';
+    final password = await _secureStorage.read(key: 'bgg_password') ?? '';
 
     _usernameController.text = username;
     _apiTokenController.text = apiToken;
+    _passwordController.text = password;
 
     if (mounted) {
       setState(() {});
@@ -45,6 +52,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _usernameController.dispose();
     _apiTokenController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
@@ -55,19 +63,56 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('bgg_username', _usernameController.text.trim());
-      await prefs.setString('bgg_api_token', _apiTokenController.text.trim());
+      final username = _usernameController.text.trim();
+      final apiToken = _apiTokenController.text.trim();
+      final password = _passwordController.text.trim();
+
+      await prefs.setString('bgg_username', username);
+      await prefs.setString('bgg_api_token', apiToken);
+
+      // Save password to secure storage
+      await _secureStorage.write(
+        key: 'bgg_password',
+        value: password,
+      );
 
       // Update provider
-      ref.read(bggUsernameProvider.notifier).state = _usernameController.text.trim();
+      ref.read(bggUsernameProvider.notifier).state = username;
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Settings saved'),
-            backgroundColor: Colors.green,
-          ),
-        );
+      // Validate BGG login if both username and password are provided
+      if (username.isNotEmpty && password.isNotEmpty) {
+        try {
+          final bggService = ref.read(bggServiceProvider);
+          await bggService.login(username, password);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Settings saved and BGG login successful!'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (loginError) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Settings saved but BGG login failed: $loginError'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Settings saved'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -312,6 +357,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: () {
                         setState(() {
                           _obscureToken = !_obscureToken;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: 'BGG Password',
+                    hintText: 'Enter your BGG password',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: const Icon(Icons.lock),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscurePassword = !_obscurePassword;
                         });
                       },
                     ),

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/game.dart';
 import '../models/game_with_play_info.dart';
 import '../models/scheduled_game.dart';
@@ -92,15 +93,17 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
         final existingGame = await db.getGameByBggId(game.bggId);
 
         if (existingGame != null) {
-          // Update existing game, preserve location
+          // Update existing game, preserve location and owned status
           final updatedGame = game.copyWith(
             id: existingGame.id,
             location: existingGame.location,
+            owned: existingGame.owned,
+            wishlisted: existingGame.wishlisted,
           );
           await db.updateGame(updatedGame);
         } else {
-          // Insert new game
-          await db.insertGame(game);
+          // Insert new game (from collection sync, so mark as owned)
+          await db.insertGame(game.copyWith(owned: true));
         }
       }
 
@@ -160,7 +163,57 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
   /// Toggle the owned status of a game
   Future<Game?> toggleOwned(int gameId, bool owned) async {
     final db = ref.read(databaseServiceProvider);
+
+    // Update local database first
     await db.updateGameOwned(gameId, owned);
+
+    // TODO: BGG write API sync - currently disabled until we figure out the correct API format
+    // Try to sync with BGG if credentials are available
+    /*
+    try {
+      final game = await db.getGameById(gameId);
+      if (game == null) {
+        print('⚠️ Cannot sync with BGG: game not found');
+        await loadGames();
+        return game;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final username = prefs.getString('bgg_username') ?? '';
+      const secureStorage = FlutterSecureStorage();
+      final password = await secureStorage.read(key: 'bgg_password') ?? '';
+
+      if (username.isEmpty || password.isEmpty) {
+        print('⚠️ BGG credentials not set, skipping BGG sync');
+        await loadGames();
+        return game;
+      }
+
+      final bggService = ref.read(bggServiceProvider);
+
+      // Login to BGG if not already logged in
+      if (!bggService.isLoggedIn) {
+        print('🔐 Logging in to BGG...');
+        await bggService.login(username, password);
+      }
+
+      // Update BGG collection
+      print('🔄 Syncing ownership status with BGG...');
+      await bggService.updateGameOwnership(
+        game.bggId,
+        owned,
+        gameName: game.name,
+        imageUrl: game.imageUrl,
+        thumbnailUrl: game.thumbnailUrl,
+      );
+      print('✅ Successfully synced with BGG');
+    } catch (e) {
+      // Don't fail the local update if BGG sync fails
+      print('⚠️ Failed to sync with BGG: $e');
+      // User will still see the local update
+    }
+    */
+
     await loadGames();
     return await db.getGameById(gameId);
   }

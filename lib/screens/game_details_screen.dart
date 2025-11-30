@@ -1049,15 +1049,66 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
       final detailedGame = await bggService.fetchGameDetails(widget.game.bggId);
 
-      // Preserve the database ID and location
+      // Preserve the database ID, location, and ownership status
       final updatedGame = detailedGame.copyWith(
         id: widget.game.id,
         location: widget.game.location,
+        owned: widget.game.owned,
+        wishlisted: widget.game.wishlisted,
+        hasNfcTag: widget.game.hasNfcTag,
       );
 
       // Update database
       final db = ref.read(databaseServiceProvider);
       await db.updateGame(updatedGame);
+
+      // Sync plays from BGG if we have a username
+      if (widget.game.id != null) {
+        final username = prefs.getString('bgg_username') ?? '';
+        if (username.isNotEmpty) {
+          try {
+            print('🎲 Syncing plays from BGG...');
+            final bggPlays = await bggService.fetchPlaysForGame(username, widget.game.bggId);
+
+            // Get existing plays to avoid duplicates
+            final existingPlays = await db.getPlaysForGame(widget.game.id!);
+
+            // Convert existing plays to a set of date strings for quick lookup
+            final existingPlayDates = existingPlays
+                .map((p) => p.datePlayed.toIso8601String().substring(0, 10))
+                .toSet();
+
+            // Add plays from BGG that don't exist locally
+            int addedCount = 0;
+            for (final bggPlay in bggPlays) {
+              final playDate = (bggPlay['datePlayed'] as DateTime)
+                  .toIso8601String()
+                  .substring(0, 10);
+
+              if (!existingPlayDates.contains(playDate)) {
+                final play = Play(
+                  gameId: widget.game.id!,
+                  datePlayed: bggPlay['datePlayed'] as DateTime,
+                  won: bggPlay['won'] as bool?,
+                );
+                await db.insertPlay(play);
+                addedCount++;
+              }
+            }
+
+            if (addedCount > 0) {
+              print('✅ Added $addedCount plays from BGG');
+              // Reload plays to show the new data
+              await _loadPlays();
+            } else {
+              print('✅ All BGG plays already synced');
+            }
+          } catch (e) {
+            print('⚠️ Failed to sync plays from BGG: $e');
+            // Don't fail the whole operation if plays sync fails
+          }
+        }
+      }
 
       // Refresh the games provider so the list updates
       ref.read(gamesProvider.notifier).loadGames();
