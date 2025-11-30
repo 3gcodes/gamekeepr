@@ -2320,11 +2320,20 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 ),
               ),
             ),
-          if (!_isLoadingDetails && widget.isOwned)
+          if (widget.isOwned)
             IconButton(
-              icon: const Icon(Icons.sync),
-              onPressed: _fetchGameDetails,
-              tooltip: 'Sync from BGG',
+              icon: _isLoadingDetails
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.sync),
+              onPressed: _isLoadingDetails ? null : _fetchGameDetails,
+              tooltip: _isLoadingDetails ? 'Syncing...' : 'Sync from BGG',
             ),
           IconButton(
             icon: const Icon(Icons.share),
