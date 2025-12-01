@@ -1100,6 +1100,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                   gameId: widget.game.id!,
                   datePlayed: bggPlay['datePlayed'] as DateTime,
                   won: bggPlay['won'] as bool?,
+                  syncedFromBgg: true,
                 );
                 await db.insertPlay(play);
                 addedCount++;
@@ -1767,6 +1768,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
+                    isThreeLine: play.syncedFromBgg,
                     leading: play.won == null
                         ? const Icon(Icons.event, color: Colors.blue)
                         : play.won!
@@ -1801,26 +1803,50 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                           ),
                       ],
                     ),
-                    subtitle: Text(
-                      'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit, color: Colors.blue),
-                          onPressed: () => _editPlay(play),
+                        Text(
+                          'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _deletePlay(play.id!),
-                        ),
+                        if (play.syncedFromBgg)
+                          const SizedBox(height: 4),
+                        if (play.syncedFromBgg)
+                          Row(
+                            children: [
+                              Icon(Icons.cloud_download, size: 12, color: Colors.blue[700]),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Synced from BGG',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.blue[700],
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
+                    trailing: play.syncedFromBgg
+                        ? Icon(Icons.lock_outline, color: Colors.grey[400])
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.blue),
+                                onPressed: () => _editPlay(play),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deletePlay(play.id!),
+                              ),
+                            ],
+                          ),
                   ),
                 );
               }).toList(),
