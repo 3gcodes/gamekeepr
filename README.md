@@ -10,9 +10,11 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 
 ### BoardGameGeek Integration
 - **Collection Sync**: Import your board game collection from BoardGameGeek using their API v2
+- **Ownership Sync**: Automatically sync ownership status changes back to BGG when you add or remove games
+- **Play History Sync**: Import play history from BGG for each game (synced plays are marked as read-only)
 - **BGG Search**: Search the entire BGG database to add games not in your collection
 - **Game Details**: View comprehensive game information including description, categories, mechanics, and expansions
-- **API Token Auth**: Secure authentication using BGG API tokens
+- **API Token Auth**: Secure authentication using BGG API tokens and password for write operations
 
 ### Collection Management
 - **Multiple Views**:
@@ -47,8 +49,10 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 ### Play Tracking
 - **Record Plays**: Log when you play each game with date selection
 - **Win/Loss Tracking**: Track your wins and losses for competitive games
-- **Play History**: View complete play history for each game
-- **Edit & Delete**: Modify or remove play records as needed
+- **BGG Play Sync**: Automatically import play history from BGG when syncing game details
+- **Read-Only Synced Plays**: Plays synced from BGG are marked with a cloud icon and cannot be edited/deleted
+- **Manual Plays**: Create your own play records that can be edited and deleted
+- **Play History**: View complete play history for each game with clear indicators for synced vs. manual plays
 - **Statistics**: See play count and win/loss record in the recently played view
 
 ### Game Loan Tracking
@@ -131,8 +135,9 @@ The app requires NFC capabilities. These are already configured in the project:
 1. Open the app and go to **Settings** (gear icon in the navigation drawer)
 2. Enter your **BoardGameGeek username**
 3. Enter your **BGG API token** (obtain from BGG account settings)
-4. Tap **Save Settings**
-5. Return to the home screen and tap the **sync button** to import your collection
+4. *(Optional)* Enter your **BGG password** to enable two-way sync (ownership changes will sync back to BGG)
+5. Tap **Save Settings**
+6. Return to the home screen and tap the **sync button** to import your collection
 
 ### Using NFC Tags
 
@@ -237,9 +242,14 @@ lib/
 
 ### BGG API Integration
 
-The app uses BoardGameGeek's XML API v2:
-- Collection endpoint: `/xmlapi2/collection` - Fetch user's game collection
-- Thing endpoint: `/xmlapi2/thing` - Get detailed game information
+The app uses BoardGameGeek's API:
+- **XML API v2** (read operations):
+  - Collection endpoint: `/xmlapi2/collection` - Fetch user's game collection
+  - Thing endpoint: `/xmlapi2/thing` - Get detailed game information
+  - Plays endpoint: `/xmlapi2/plays` - Fetch play history for games
+- **REST API** (write operations):
+  - Login endpoint: `/login/api/v1` - Authenticate for write access
+  - Collection items endpoint: `/api/collectionitems` - Update ownership status
 
 ## Troubleshooting
 
