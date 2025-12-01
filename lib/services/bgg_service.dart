@@ -166,16 +166,9 @@ class BggService {
         print('📡 PUT Response Headers: ${response.headers}');
         print('📡 PUT Response Body: ${response.data}');
       } else {
-        // Item doesn't exist in BGG collection
-        if (!owned) {
-          // User is removing ownership of a game not in BGG collection
-          // This is a no-op - item already doesn't exist
-          print('✅ Item already not in BGG collection, nothing to do');
-          return;
-        }
-
-        // Item doesn't exist, create it with POST to REST API
-        print('📤 Item not in collection, creating with POST');
+        // GET returned 404 - either doesn't exist or has no status set
+        // POST to create/update with the desired status
+        print('📤 GET returned 404, using POST to set status to owned=$owned');
 
         final itemData = {
           'objecttype': 'thing',
