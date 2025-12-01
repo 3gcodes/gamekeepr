@@ -167,9 +167,7 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
     // Update local database first
     await db.updateGameOwned(gameId, owned);
 
-    // TODO: BGG write API sync - currently disabled until we figure out the correct API format
     // Try to sync with BGG if credentials are available
-    /*
     try {
       final game = await db.getGameById(gameId);
       if (game == null) {
@@ -212,7 +210,6 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
       print('⚠️ Failed to sync with BGG: $e');
       // User will still see the local update
     }
-    */
 
     await loadGames();
     return await db.getGameById(gameId);

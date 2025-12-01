@@ -16,6 +16,7 @@ class BggService {
   final CookieJar _cookieJar = CookieJar();
   late final Dio _webDio;
   bool _isLoggedIn = false;
+  String? _sessionCookie;
 
   BggService() {
     // Initialize web Dio instance with cookie manager for form-based auth
@@ -73,6 +74,21 @@ class BggService {
       print('📡 Login Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
+        // Extract session cookie from response
+        final cookies = response.headers['set-cookie'];
+        if (cookies != null && cookies.isNotEmpty) {
+          // Find SessionID cookie
+          for (final cookie in cookies) {
+            if (cookie.contains('SessionID=')) {
+              // Extract just the SessionID cookie
+              final sessionIdPart = cookie.split(';').first;
+              _sessionCookie = sessionIdPart;
+              print('🍪 Captured session cookie');
+              break;
+            }
+          }
+        }
+
         _isLoggedIn = true;
         print('✅ Successfully logged in to BGG');
       } else {
@@ -97,9 +113,11 @@ class BggService {
 
       // First, try to GET the collection item to see if it exists and get its collid
       print('📥 Checking if item exists in collection...');
+      print('📥 GET URL: /api/collectionitems/$bggId');
       final getResponse = await _webDio.get(
         '/api/collectionitems/$bggId',
         options: Options(
+          headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
           validateStatus: (status) => status! < 500,
         ),
       );
@@ -111,25 +129,35 @@ class BggService {
       if (getResponse.statusCode == 200) {
         // Item exists, use PUT to update it
         print('✅ Item exists in collection, updating...');
-        final existingItem = getResponse.data;
-        print('📦 Existing item data: $existingItem');
+        final responseData = getResponse.data;
+        print('📦 GET response data: $responseData');
 
-        // Prepare PUT payload with the existing item data
+        // Extract the item from response (could be wrapped in "item" key or not)
+        final existingItem = responseData is Map && responseData.containsKey('item')
+            ? responseData['item']
+            : responseData;
+
+        // Prepare PUT payload with the existing item data wrapped in "item" key
         final putPayload = {
-          ...existingItem, // Keep all existing fields
-          'status': {
-            ...((existingItem['status'] as Map?) ?? {}),
-            'own': owned,
+          'item': {
+            ...existingItem, // Keep all existing fields
+            'status': {
+              ...((existingItem['status'] as Map?) ?? {}),
+              'own': owned,
+            },
           },
         };
 
         print('📦 PUT Payload (merged): ${putPayload.keys.toList()}');
+        print('📦 PUT Payload (full): $putPayload');
+        print('📤 PUT URL: /api/collectionitems/$bggId');
 
         response = await _webDio.put(
           '/api/collectionitems/$bggId',
           data: putPayload,
           options: Options(
             contentType: Headers.jsonContentType,
+            headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
             validateStatus: (status) => status! < 500,
           ),
         );
@@ -138,33 +166,42 @@ class BggService {
         print('📡 PUT Response Headers: ${response.headers}');
         print('📡 PUT Response Body: ${response.data}');
       } else {
-        // Item doesn't exist in BGG collection
-        if (!owned) {
-          // User is removing ownership of a game not in BGG collection
-          // This is a no-op - item already doesn't exist
-          print('✅ Item already not in BGG collection, nothing to do');
-          return;
-        }
+        // GET returned 404 - either doesn't exist or has no status set
+        // POST to create/update with the desired status
+        print('📤 GET returned 404, using POST to set status to owned=$owned');
 
-        // Item doesn't exist, try using geekplay.php (legacy endpoint)
-        print('📤 Item not in collection, attempting POST to /geekplay.php');
-
-        // Try form-encoded data - use collid instead of action
-        final formData = {
-          'ajax': '1',
-          'collid': 'new',
+        final itemData = {
           'objecttype': 'thing',
-          'objectid': bggId.toString(),
-          'own': '1',
+          'objectid': bggId,
+          'status': {
+            'own': owned,
+          },
         };
 
-        print('📦 Form Data: $formData');
+        // Include game metadata if provided
+        if (gameName != null) {
+          itemData['objectname'] = gameName;
+        }
+        if (imageUrl != null) {
+          itemData['imageUrl'] = imageUrl;
+        }
+        if (thumbnailUrl != null) {
+          itemData['thumbnailUrl'] = thumbnailUrl;
+        }
+
+        final postPayload = {
+          'item': itemData,
+        };
+
+        print('📦 POST Payload (keys): ${postPayload.keys.toList()}');
+        print('📦 POST Payload (full): $postPayload');
 
         response = await _webDio.post(
-          '/geekplay.php',
-          data: formData,
+          '/api/collectionitems',
+          data: postPayload,
           options: Options(
-            contentType: Headers.formUrlEncodedContentType,
+            contentType: Headers.jsonContentType,
+            headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
             validateStatus: (status) => status! < 500,
           ),
         );
