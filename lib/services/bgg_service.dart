@@ -113,6 +113,7 @@ class BggService {
 
       // First, try to GET the collection item to see if it exists and get its collid
       print('📥 Checking if item exists in collection...');
+      print('📥 GET URL: /api/collectionitems/$bggId');
       final getResponse = await _webDio.get(
         '/api/collectionitems/$bggId',
         options: Options(
@@ -149,6 +150,7 @@ class BggService {
 
         print('📦 PUT Payload (merged): ${putPayload.keys.toList()}');
         print('📦 PUT Payload (full): $putPayload');
+        print('📤 PUT URL: /api/collectionitems/$bggId');
 
         response = await _webDio.put(
           '/api/collectionitems/$bggId',
