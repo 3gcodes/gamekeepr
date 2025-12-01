@@ -341,29 +341,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _apiTokenController,
-                  obscureText: _obscureToken,
-                  decoration: InputDecoration(
-                    labelText: 'BGG API Token',
-                    hintText: 'Enter your BGG API token',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    prefixIcon: const Icon(Icons.key),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureToken ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _obscureToken = !_obscureToken;
-                        });
-                      },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
@@ -380,6 +357,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: () {
                         setState(() {
                           _obscurePassword = !_obscurePassword;
+                        });
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _apiTokenController,
+                  obscureText: _obscureToken,
+                  decoration: InputDecoration(
+                    labelText: 'BGG API Token',
+                    hintText: 'Enter your BGG API token',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: const Icon(Icons.key),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureToken ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _obscureToken = !_obscureToken;
                         });
                       },
                     ),

@@ -134,8 +134,8 @@ The app requires NFC capabilities. These are already configured in the project:
 
 1. Open the app and go to **Settings** (gear icon in the navigation drawer)
 2. Enter your **BoardGameGeek username**
-3. Enter your **BGG API token** (obtain from BGG account settings)
-4. *(Optional)* Enter your **BGG password** to enable two-way sync (ownership changes will sync back to BGG)
+3. *(Optional)* Enter your **BGG password** to enable two-way sync (ownership changes will sync back to BGG)
+4. Enter your **BGG API token** (obtain from BGG account settings)
 5. Tap **Save Settings**
 6. Return to the home screen and tap the **sync button** to import your collection
 
