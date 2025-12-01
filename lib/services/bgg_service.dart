@@ -164,25 +164,35 @@ class BggService {
           return;
         }
 
-        // Item doesn't exist, try using geekplay.php (legacy endpoint)
-        print('📤 Item not in collection, attempting POST to /geekplay.php');
+        // Item doesn't exist, create it with POST to REST API
+        print('📤 Item not in collection, creating with POST');
 
-        // Try form-encoded data - use collid instead of action
-        final formData = {
-          'ajax': '1',
-          'collid': 'new',
+        final postPayload = {
           'objecttype': 'thing',
-          'objectid': bggId.toString(),
-          'own': '1',
+          'objectid': bggId,
+          'status': {
+            'own': owned,
+          },
         };
 
-        print('📦 Form Data: $formData');
+        // Include game metadata if provided
+        if (gameName != null) {
+          postPayload['name'] = gameName;
+        }
+        if (imageUrl != null) {
+          postPayload['imageUrl'] = imageUrl;
+        }
+        if (thumbnailUrl != null) {
+          postPayload['thumbnailUrl'] = thumbnailUrl;
+        }
+
+        print('📦 POST Payload: ${postPayload.keys.toList()}');
 
         response = await _webDio.post(
-          '/geekplay.php',
-          data: formData,
+          '/api/collectionitems',
+          data: postPayload,
           options: Options(
-            contentType: Headers.formUrlEncodedContentType,
+            contentType: Headers.jsonContentType,
             headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
             validateStatus: (status) => status! < 500,
           ),
