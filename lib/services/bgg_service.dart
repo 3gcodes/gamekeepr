@@ -141,6 +141,7 @@ class BggService {
         };
 
         print('📦 PUT Payload (merged): ${putPayload.keys.toList()}');
+        print('📦 PUT Payload (full): $putPayload');
 
         response = await _webDio.put(
           '/api/collectionitems/$bggId',
@@ -186,7 +187,8 @@ class BggService {
           postPayload['thumbnailUrl'] = thumbnailUrl;
         }
 
-        print('📦 POST Payload: ${postPayload.keys.toList()}');
+        print('📦 POST Payload (keys): ${postPayload.keys.toList()}');
+        print('📦 POST Payload (full): $postPayload');
 
         response = await _webDio.post(
           '/api/collectionitems',
