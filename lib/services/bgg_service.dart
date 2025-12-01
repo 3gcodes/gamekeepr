@@ -128,15 +128,22 @@ class BggService {
       if (getResponse.statusCode == 200) {
         // Item exists, use PUT to update it
         print('✅ Item exists in collection, updating...');
-        final existingItem = getResponse.data;
-        print('📦 Existing item data: $existingItem');
+        final responseData = getResponse.data;
+        print('📦 GET response data: $responseData');
 
-        // Prepare PUT payload with the existing item data
+        // Extract the item from response (could be wrapped in "item" key or not)
+        final existingItem = responseData is Map && responseData.containsKey('item')
+            ? responseData['item']
+            : responseData;
+
+        // Prepare PUT payload with the existing item data wrapped in "item" key
         final putPayload = {
-          ...existingItem, // Keep all existing fields
-          'status': {
-            ...((existingItem['status'] as Map?) ?? {}),
-            'own': owned,
+          'item': {
+            ...existingItem, // Keep all existing fields
+            'status': {
+              ...((existingItem['status'] as Map?) ?? {}),
+              'own': owned,
+            },
           },
         };
 
@@ -168,7 +175,7 @@ class BggService {
         // Item doesn't exist, create it with POST to REST API
         print('📤 Item not in collection, creating with POST');
 
-        final postPayload = {
+        final itemData = {
           'objecttype': 'thing',
           'objectid': bggId,
           'status': {
@@ -178,14 +185,18 @@ class BggService {
 
         // Include game metadata if provided
         if (gameName != null) {
-          postPayload['name'] = gameName;
+          itemData['objectname'] = gameName;
         }
         if (imageUrl != null) {
-          postPayload['imageUrl'] = imageUrl;
+          itemData['imageUrl'] = imageUrl;
         }
         if (thumbnailUrl != null) {
-          postPayload['thumbnailUrl'] = thumbnailUrl;
+          itemData['thumbnailUrl'] = thumbnailUrl;
         }
+
+        final postPayload = {
+          'item': itemData,
+        };
 
         print('📦 POST Payload (keys): ${postPayload.keys.toList()}');
         print('📦 POST Payload (full): $postPayload');
