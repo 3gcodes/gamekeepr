@@ -16,6 +16,7 @@ class BggService {
   final CookieJar _cookieJar = CookieJar();
   late final Dio _webDio;
   bool _isLoggedIn = false;
+  String? _sessionCookie;
 
   BggService() {
     // Initialize web Dio instance with cookie manager for form-based auth
@@ -73,6 +74,21 @@ class BggService {
       print('📡 Login Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
+        // Extract session cookie from response
+        final cookies = response.headers['set-cookie'];
+        if (cookies != null && cookies.isNotEmpty) {
+          // Find SessionID cookie
+          for (final cookie in cookies) {
+            if (cookie.contains('SessionID=')) {
+              // Extract just the SessionID cookie
+              final sessionIdPart = cookie.split(';').first;
+              _sessionCookie = sessionIdPart;
+              print('🍪 Captured session cookie');
+              break;
+            }
+          }
+        }
+
         _isLoggedIn = true;
         print('✅ Successfully logged in to BGG');
       } else {
@@ -100,6 +116,7 @@ class BggService {
       final getResponse = await _webDio.get(
         '/api/collectionitems/$bggId',
         options: Options(
+          headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
           validateStatus: (status) => status! < 500,
         ),
       );
@@ -130,6 +147,7 @@ class BggService {
           data: putPayload,
           options: Options(
             contentType: Headers.jsonContentType,
+            headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
             validateStatus: (status) => status! < 500,
           ),
         );
@@ -165,6 +183,7 @@ class BggService {
           data: formData,
           options: Options(
             contentType: Headers.formUrlEncodedContentType,
+            headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
             validateStatus: (status) => status! < 500,
           ),
         );
