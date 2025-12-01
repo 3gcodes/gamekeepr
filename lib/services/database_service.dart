@@ -26,7 +26,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -77,6 +77,7 @@ class DatabaseService {
         date_played TEXT NOT NULL,
         created_at TEXT NOT NULL,
         won INTEGER,
+        synced_from_bgg INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
       )
     ''');
@@ -291,6 +292,13 @@ class DatabaseService {
 
       await db.execute('''
         CREATE INDEX idx_tag ON game_tags(tag)
+      ''');
+    }
+
+    if (oldVersion < 12) {
+      // Add synced_from_bgg column to plays table for version 12
+      await db.execute('''
+        ALTER TABLE plays ADD COLUMN synced_from_bgg INTEGER NOT NULL DEFAULT 0
       ''');
     }
   }
