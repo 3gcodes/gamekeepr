@@ -564,7 +564,7 @@ class BggService {
   }
 
   /// Search for games on BGG by name
-  /// Returns a list of search results with BGG ID and name
+  /// Returns a list of search results with BGG ID, name, and thumbnail URL
   Future<List<Map<String, dynamic>>> searchGames(String query) async {
     if (query.isEmpty) return [];
 
@@ -619,12 +619,88 @@ class BggService {
           'id': id,
           'name': name,
           'year': year != null ? int.tryParse(year) : null,
+          'thumbnailUrl': null, // Will be populated below
         });
       }
     }
 
     print('✅ Found ${results.length} search results');
+
+    // Fetch thumbnails for the first batch of results (first 10)
+    if (results.isNotEmpty) {
+      final batchSize = results.length > 10 ? 10 : results.length;
+      final firstBatch = results.take(batchSize).toList();
+      final idsToFetch = firstBatch.map((r) => r['id'] as int).toList();
+
+      try {
+        print('🖼️ Fetching thumbnails for first $batchSize results...');
+        final thumbnails = await fetchThumbnails(idsToFetch);
+
+        // Map thumbnails back to results
+        for (final result in firstBatch) {
+          final id = result['id'] as int;
+          result['thumbnailUrl'] = thumbnails[id];
+        }
+
+        print('✅ Added thumbnails to search results');
+      } catch (e) {
+        print('⚠️ Failed to fetch thumbnails: $e');
+        // Continue without thumbnails - they'll just be null
+      }
+    }
+
     return results;
+  }
+
+  /// Fetch thumbnails for a list of game IDs
+  /// Returns a map of game ID to thumbnail URL
+  Future<Map<int, String?>> fetchThumbnails(List<int> gameIds) async {
+    if (gameIds.isEmpty) return {};
+
+    final idsString = gameIds.join(',');
+    final detailsUrl = '$_baseUrl/thing?id=$idsString';
+
+    print('🔍 BGG Thumbnails Request: $detailsUrl');
+
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/xml',
+    };
+
+    if (_bearerToken != null) {
+      headers['Authorization'] = 'Bearer $_bearerToken';
+    }
+
+    final cleanDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 30),
+      receiveTimeout: const Duration(seconds: 30),
+      headers: headers,
+    ));
+
+    final response = await cleanDio.get(
+      detailsUrl,
+      options: Options(
+        validateStatus: (status) => status! < 500,
+      ),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to fetch thumbnails: ${response.statusCode}');
+    }
+
+    final document = XmlDocument.parse(response.data.toString());
+    final items = document.findAllElements('item');
+
+    final thumbnails = <int, String?>{};
+    for (final item in items) {
+      final id = int.tryParse(item.getAttribute('id') ?? '');
+      if (id != null) {
+        final thumbnailElement = item.findElements('thumbnail').firstOrNull;
+        thumbnails[id] = thumbnailElement?.innerText;
+      }
+    }
+
+    return thumbnails;
   }
 
   /// Fetch detailed information for a single game by BGG ID

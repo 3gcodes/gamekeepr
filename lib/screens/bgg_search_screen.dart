@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/game.dart';
@@ -22,6 +23,11 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
   bool _isSearching = false;
   String? _error;
 
+  // Lazy loading state
+  final Set<int> _loadedThumbnails = {};
+  final Set<int> _pendingThumbnails = {};
+  Timer? _thumbnailFetchTimer;
+
   @override
   void initState() {
     super.initState();
@@ -34,6 +40,7 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _thumbnailFetchTimer?.cancel();
     super.dispose();
   }
 
@@ -44,6 +51,8 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
     setState(() {
       _isSearching = true;
       _error = null;
+      _loadedThumbnails.clear();
+      _pendingThumbnails.clear();
     });
 
     try {
@@ -61,11 +70,148 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
         _searchResults = results;
         _isSearching = false;
       });
+
+      // Mark initially loaded thumbnails
+      for (final result in results) {
+        if (result['thumbnailUrl'] != null) {
+          _loadedThumbnails.add(result['id'] as int);
+        }
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
         _isSearching = false;
       });
+    }
+  }
+
+  /// Request thumbnail loading for a specific game ID
+  void _requestThumbnail(int gameId) {
+    // Skip if already loaded or pending
+    if (_loadedThumbnails.contains(gameId) || _pendingThumbnails.contains(gameId)) {
+      return;
+    }
+
+    _pendingThumbnails.add(gameId);
+
+    // Cancel existing timer and start a new one to batch requests
+    _thumbnailFetchTimer?.cancel();
+    _thumbnailFetchTimer = Timer(const Duration(milliseconds: 300), () {
+      _fetchPendingThumbnails();
+    });
+  }
+
+  /// Fetch thumbnails for all pending game IDs
+  Future<void> _fetchPendingThumbnails() async {
+    if (_pendingThumbnails.isEmpty) return;
+
+    final idsToFetch = _pendingThumbnails.toList();
+    _pendingThumbnails.clear();
+
+    try {
+      final bggService = ref.read(bggServiceProvider);
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final token = prefs.getString('bgg_api_token') ?? '';
+      if (token.isNotEmpty) {
+        bggService.setBearerToken(token);
+      }
+
+      print('🖼️ Lazy loading thumbnails for ${idsToFetch.length} games...');
+      final thumbnails = await bggService.fetchThumbnails(idsToFetch);
+
+      // Update search results with the new thumbnails
+      if (mounted) {
+        setState(() {
+          for (final result in _searchResults) {
+            final id = result['id'] as int;
+            if (thumbnails.containsKey(id) && thumbnails[id] != null) {
+              result['thumbnailUrl'] = thumbnails[id];
+              _loadedThumbnails.add(id);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      print('⚠️ Failed to lazy load thumbnails: $e');
+      // Don't show error to user for lazy loading failures
+    }
+  }
+
+  /// Add a game to collection from search results
+  Future<void> _addGameToCollection(int bggId, String gameName) async {
+    try {
+      // Ensure token is loaded before using the service
+      final bggService = ref.read(bggServiceProvider);
+      final prefs = await ref.read(sharedPreferencesProvider.future);
+      final token = prefs.getString('bgg_api_token') ?? '';
+      if (token.isNotEmpty) {
+        bggService.setBearerToken(token);
+      }
+
+      final gamesNotifier = ref.read(gamesProvider.notifier);
+
+      // Check if game already exists in database
+      var existingGame = await gamesNotifier.getGameByBggId(bggId);
+
+      if (existingGame != null && existingGame.owned) {
+        // Game is already owned
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$gameName is already in your collection'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      Game gameToAdd;
+
+      if (existingGame != null) {
+        // Game exists but not owned - just toggle ownership
+        gameToAdd = existingGame;
+      } else {
+        // Fetch from BGG and save to database
+        final game = await bggService.fetchGameDetails(bggId);
+        gameToAdd = await gamesNotifier.saveGameFromBggSearch(game);
+      }
+
+      // Mark as owned
+      await gamesNotifier.toggleOwned(gameToAdd.id!, true);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Added $gameName to your collection'),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'View',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameDetailsScreen(
+                      game: gameToAdd.copyWith(owned: true),
+                      isOwned: true,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding game: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -249,10 +395,70 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
         final name = result['name'] as String;
         final year = result['year'] as int?;
         final bggId = result['id'] as int;
+        final thumbnailUrl = result['thumbnailUrl'] as String?;
+
+        // Request thumbnail if not already loaded
+        if (thumbnailUrl == null) {
+          _requestThumbnail(bggId);
+        }
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: ListTile(
+            leading: thumbnailUrl != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      thumbnailUrl,
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(
+                            Icons.image_not_supported,
+                            color: Colors.grey,
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[200],
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  )
+                : Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(
+                      Icons.videogame_asset,
+                      color: Colors.grey,
+                    ),
+                  ),
             title: Text(
               name,
               style: const TextStyle(
@@ -260,7 +466,17 @@ class _BggSearchScreenState extends ConsumerState<BggSearchScreen> {
               ),
             ),
             subtitle: year != null ? Text('Year: $year') : null,
-            trailing: const Icon(Icons.arrow_forward),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                  tooltip: 'Add to collection',
+                  onPressed: () => _addGameToCollection(bggId, name),
+                ),
+                const Icon(Icons.arrow_forward),
+              ],
+            ),
             onTap: () => _viewGameDetails(bggId, name),
           ),
         );
