@@ -1,7 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../providers/app_providers.dart';
 import '../models/game.dart';
 import '../models/game_with_play_info.dart';
@@ -163,6 +169,408 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  Future<void> _shareRecentlyPlayed() async {
+    // Show date range picker
+    final now = DateTime.now();
+    final defaultStart = DateTime(now.year, now.month, now.day - 30); // Last 30 days
+    final defaultEnd = now;
+
+    DateTimeRange? selectedRange;
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Date Range'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Choose a date range for games you want to share:'),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final range = await showDateRangePicker(
+                  context: context,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime.now(),
+                  initialDateRange: DateTimeRange(start: defaultStart, end: defaultEnd),
+                );
+                if (range != null && mounted) {
+                  selectedRange = range;
+                  Navigator.pop(context, true);
+                }
+              },
+              icon: const Icon(Icons.calendar_month),
+              label: const Text('Pick Date Range'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedRange == null) return;
+
+    // Get games played in the date range
+    final db = ref.read(databaseServiceProvider);
+    final gamesWithPlays = await db.getGamesPlayedInDateRange(
+      selectedRange!.start,
+      selectedRange!.end,
+    );
+
+    if (gamesWithPlays.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No games played in selected date range'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Show loading dialog
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text(
+                  'Creating shareable image...',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    try {
+      await _generateAndSharePlayedGamesImage(gamesWithPlays, selectedRange!);
+
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error sharing: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _generateAndSharePlayedGamesImage(
+    List<GameWithPlayInfo> gamesWithPlays,
+    DateTimeRange dateRange,
+  ) async {
+    // Limit to 6 games max for the image (better performance)
+    final gamesToShow = gamesWithPlays.take(6).toList();
+
+    // Load game images from cache or download in parallel
+    final Map<int, ui.Image?> gameImages = {};
+
+    try {
+      // Create futures for all image loads (in parallel)
+      final imageFutures = gamesToShow.map((gameWithInfo) async {
+        if (gameWithInfo.game.thumbnailUrl == null) {
+          return MapEntry(gameWithInfo.game.bggId, null);
+        }
+
+        try {
+          // Try to get from cache first
+          final cacheManager = DefaultCacheManager();
+          final fileInfo = await cacheManager.getFileFromCache(gameWithInfo.game.thumbnailUrl!);
+
+          File? imageFile;
+          if (fileInfo != null) {
+            // Use cached file
+            imageFile = fileInfo.file;
+            print('Using cached image for ${gameWithInfo.game.name}');
+          } else {
+            // Download with timeout
+            print('Downloading image for ${gameWithInfo.game.name}');
+            final file = await cacheManager.getSingleFile(
+              gameWithInfo.game.thumbnailUrl!,
+            ).timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => throw TimeoutException('Image download timeout'),
+            );
+            imageFile = file;
+          }
+
+          // Convert to ui.Image
+          final bytes = await imageFile.readAsBytes();
+          final codec = await ui.instantiateImageCodec(bytes);
+          final frame = await codec.getNextFrame();
+          return MapEntry(gameWithInfo.game.bggId, frame.image);
+        } catch (e) {
+          print('Failed to load image for ${gameWithInfo.game.name}: $e');
+          return MapEntry(gameWithInfo.game.bggId, null);
+        }
+      }).toList();
+
+      // Wait for all images with overall timeout of 8 seconds
+      final results = await Future.wait(imageFutures).timeout(
+        const Duration(seconds: 8),
+        onTimeout: () {
+          print('Overall image loading timeout - using placeholders');
+          return gamesToShow.map((g) => MapEntry(g.game.bggId, null)).toList();
+        },
+      );
+
+      // Build the map
+      for (final entry in results) {
+        gameImages[entry.key] = entry.value;
+      }
+    } catch (e) {
+      print('Error loading images: $e - using all placeholders');
+      // If anything goes wrong, just use placeholders
+      for (final gameWithInfo in gamesToShow) {
+        gameImages[gameWithInfo.game.bggId] = null;
+      }
+    }
+
+    // Calculate required width based on longest game name
+    const thumbnailSize = 56.0;
+    const padding = 16.0;
+    const itemSpacing = 8.0;
+
+    // Measure game names to determine width using actual text width
+    double maxNameWidth = 0.0;
+    for (final gameWithInfo in gamesToShow) {
+      final nameParagraph = _buildParagraph(
+        gameWithInfo.game.name,
+        16,
+        FontWeight.w600,
+        Colors.white,
+        double.infinity, // unconstrained measurement
+        TextAlign.left,
+      );
+      // Use longestLine to get actual text width
+      if (nameParagraph.longestLine > maxNameWidth) {
+        maxNameWidth = nameParagraph.longestLine;
+      }
+    }
+
+    // Measure header to ensure it fits
+    final headerParagraph = _buildParagraph(
+      'Recently Played',
+      24,
+      FontWeight.bold,
+      Colors.white,
+      double.infinity,
+      TextAlign.center,
+    );
+
+    final dateStr = '${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d, yyyy').format(dateRange.end)}';
+    final dateParagraph = _buildParagraph(
+      dateStr,
+      16,
+      FontWeight.w500,
+      Colors.white.withValues(alpha: 0.9),
+      double.infinity,
+      TextAlign.center,
+    );
+
+    // Ensure card is wide enough for header
+    final minWidthForHeader = headerParagraph.longestLine > dateParagraph.longestLine
+        ? headerParagraph.longestLine
+        : dateParagraph.longestLine;
+    final contentWidth = (padding * 2) + thumbnailSize + itemSpacing + maxNameWidth;
+    final cardWidth = contentWidth > minWidthForHeader + (padding * 2) ? contentWidth : minWidthForHeader + (padding * 2);
+
+    // Card height: padding + header + date + spacing + (items * height) + padding
+    const itemHeight = 64.0;
+    const headerHeight = 60.0;
+    final cardHeight = padding + headerHeight + (gamesToShow.length * itemHeight) + padding;
+
+    // Create the share card image
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Draw blue gradient background
+    final backgroundPaint = Paint()
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        Offset(0, cardHeight),
+        [const Color(0xFF1565C0), const Color(0xFF1976D2)],
+      );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, cardWidth, cardHeight),
+        const Radius.circular(12),
+      ),
+      backgroundPaint,
+    );
+
+    double currentY = padding;
+
+    // Recreate header and date paragraphs with proper width for drawing
+    final headerForDrawing = _buildParagraph(
+      'Recently Played',
+      24,
+      FontWeight.bold,
+      Colors.white,
+      cardWidth - (padding * 2),
+      TextAlign.center,
+    );
+
+    final dateForDrawing = _buildParagraph(
+      dateStr,
+      16,
+      FontWeight.w500,
+      Colors.white.withValues(alpha: 0.9),
+      cardWidth - (padding * 2),
+      TextAlign.center,
+    );
+
+    // Draw header
+    canvas.drawParagraph(
+      headerForDrawing,
+      Offset(padding, currentY),
+    );
+    currentY += headerForDrawing.height + 4;
+
+    // Draw date range
+    canvas.drawParagraph(
+      dateForDrawing,
+      Offset(padding, currentY),
+    );
+    currentY += dateForDrawing.height + 16;
+
+    // Draw games list
+    for (final gameWithInfo in gamesToShow) {
+      final game = gameWithInfo.game;
+      final gameImage = gameImages[game.bggId];
+
+      final thumbnailX = padding;
+      final thumbnailY = currentY + 4;
+
+      if (gameImage != null) {
+        final srcRect = Rect.fromLTWH(
+          0,
+          0,
+          gameImage.width.toDouble(),
+          gameImage.height.toDouble(),
+        );
+        final dstRect = Rect.fromLTWH(
+          thumbnailX,
+          thumbnailY,
+          thumbnailSize,
+          thumbnailSize,
+        );
+        canvas.save();
+        canvas.clipRRect(RRect.fromRectAndRadius(dstRect, const Radius.circular(6)));
+        canvas.drawImageRect(gameImage, srcRect, dstRect, Paint());
+        canvas.restore();
+      } else {
+        // Draw placeholder
+        final placeholderPaint = Paint()..color = Colors.white.withValues(alpha: 0.2);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(thumbnailX, thumbnailY, thumbnailSize, thumbnailSize),
+            const Radius.circular(6),
+          ),
+          placeholderPaint,
+        );
+        // Draw icon in placeholder
+        final iconPaint = Paint()..color = Colors.white.withValues(alpha: 0.4);
+        canvas.drawCircle(
+          Offset(thumbnailX + thumbnailSize / 2, thumbnailY + thumbnailSize / 2),
+          8,
+          iconPaint,
+        );
+      }
+
+      // Draw game name - vertically centered with thumbnail
+      final nameX = thumbnailX + thumbnailSize + itemSpacing;
+      final nameParagraph = _buildParagraph(
+        game.name,
+        16,
+        FontWeight.w600,
+        Colors.white,
+        maxNameWidth,
+        TextAlign.left,
+      );
+
+      // Center name vertically with thumbnail
+      final nameY = thumbnailY + (thumbnailSize / 2) - (nameParagraph.height / 2);
+      canvas.drawParagraph(
+        nameParagraph,
+        Offset(nameX, nameY),
+      );
+
+      currentY += itemHeight;
+    }
+
+    // Convert to image
+    final picture = recorder.endRecording();
+    final img = await picture.toImage(cardWidth.toInt(), cardHeight.toInt());
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+
+    if (byteData == null) throw Exception('Failed to create image');
+
+    // Save to temp file
+    final tempDir = await getTemporaryDirectory();
+    final file = File('${tempDir.path}/played_games_${DateTime.now().millisecondsSinceEpoch}.png');
+    await file.writeAsBytes(byteData.buffer.asUint8List());
+
+    // Share the image
+    if (mounted) {
+      final box = context.findRenderObject() as RenderBox?;
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Games I played ${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d, yyyy').format(dateRange.end)}',
+        sharePositionOrigin: box != null
+            ? box.localToGlobal(Offset.zero) & box.size
+            : const Rect.fromLTWH(0, 0, 100, 100),
+      );
+    }
+  }
+
+  ui.Paragraph _buildParagraph(
+    String text,
+    double fontSize,
+    FontWeight fontWeight,
+    Color color,
+    double width,
+    TextAlign textAlign,
+  ) {
+    final paragraphStyle = ui.ParagraphStyle(
+      textAlign: textAlign,
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+    );
+    final paragraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+      ..pushStyle(ui.TextStyle(color: color, fontSize: fontSize, fontWeight: fontWeight))
+      ..addText(text);
+    final paragraph = paragraphBuilder.build()
+      ..layout(ui.ParagraphConstraints(width: width));
+    return paragraph;
+  }
+
   Widget _buildDrawer(BuildContext context) {
     return Drawer(
       child: ListView(
@@ -302,6 +710,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               onPressed: _showFilterBottomSheet,
               tooltip: 'Filter',
+            ),
+          // Share button - show on Recently Played tab
+          if (currentTab == 2)
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: _shareRecentlyPlayed,
+              tooltip: 'Share Played Games',
             ),
           // Direct Scan Tag button
           IconButton(

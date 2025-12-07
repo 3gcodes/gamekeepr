@@ -7,6 +7,7 @@ import '../models/play.dart';
 import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
 import '../models/game_with_loan_info.dart';
+import '../models/game_with_play_info.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -563,6 +564,33 @@ class DatabaseService {
     ''');
 
     return result;
+  }
+
+  /// Get games played within a specific date range
+  /// Returns a list of GameWithPlayInfo for games played in the date range
+  Future<List<GameWithPlayInfo>> getGamesPlayedInDateRange(DateTime startDate, DateTime endDate) async {
+    final db = await database;
+
+    // Normalize dates to start/end of day
+    final start = DateTime(startDate.year, startDate.month, startDate.day).toIso8601String();
+    final end = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59).toIso8601String();
+
+    // Query to get games played in the date range with their play stats
+    final result = await db.rawQuery('''
+      SELECT
+        g.*,
+        MAX(p.date_played) as last_played,
+        COUNT(p.id) as play_count,
+        SUM(CASE WHEN p.won = 1 THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN p.won = 0 THEN 1 ELSE 0 END) as losses
+      FROM games g
+      INNER JOIN plays p ON g.id = p.game_id
+      WHERE p.date_played >= ? AND p.date_played <= ?
+      GROUP BY g.id
+      ORDER BY COUNT(p.id) DESC, MAX(p.date_played) DESC
+    ''', [start, end]);
+
+    return result.map((map) => GameWithPlayInfo.fromMap(map)).toList();
   }
 
   // ==================== Scheduled Games Methods ====================

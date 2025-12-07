@@ -31,6 +31,7 @@ dependencies:
 
   # UI & Images
   cached_network_image: ^3.3.0
+  flutter_cache_manager: ^3.3.1
 
   # Utils
   shared_preferences: ^2.2.2
