@@ -28,6 +28,10 @@
 	<true/>
 	<key>NFCReaderUsageDescription</key>
 	<string>This app needs access to NFC to read and write game location tags</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs access to the camera to take photos of game shelves for recognition</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to the photo library to select images of game shelves for recognition</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

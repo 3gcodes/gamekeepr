@@ -32,6 +32,12 @@ dependencies:
   # UI & Images
   cached_network_image: ^3.3.0
   flutter_cache_manager: ^3.3.1
+  image_picker: ^1.0.7
+  camera: ^0.10.5+9
+
+  # ML & Text Recognition
+  google_mlkit_text_recognition: ^0.13.0
+  string_similarity: ^2.0.0
 
   # Utils
   shared_preferences: ^2.2.2
