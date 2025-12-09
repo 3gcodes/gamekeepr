@@ -46,6 +46,15 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Record Play via NFC**: Scan a game tag to quickly record a play session
 - **Shelf Navigation**: Scan shelf tags to view all games in that location
 
+### Game Recognition (Experimental)
+- **Photo Recognition**: Take a photo of your game shelf to identify games by their spines
+- **OCR Technology**: Uses Google ML Kit to extract text from game spine images
+- **Fuzzy Matching**: Intelligent matching algorithm compares extracted text against your collection
+- **Confidence Scoring**: Results ranked by confidence (high/medium/low) to help identify accurate matches
+- **Inline NFC Writing**: Write NFC tags directly from the recognition results screen
+- **Multiple Sources**: Capture photos with your camera or select from your photo library
+- **Note**: This is an experimental feature; recognition accuracy may vary based on image quality and text clarity
+
 ### Play Tracking
 - **Record Plays**: Log when you play each game with date selection
 - **Win/Loss Tracking**: Track your wins and losses for competitive games
@@ -123,10 +132,13 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 
 ### iOS Configuration
 
-The app requires NFC capabilities. These are already configured in the project:
+The app requires NFC and camera capabilities. These are already configured in the project:
 
 - NFC Tag Reading capability is enabled in the Xcode project
-- `Info.plist` includes required NFC usage descriptions
+- `Info.plist` includes required usage descriptions:
+  - `NFCReaderUsageDescription` for NFC tag reading/writing
+  - `NSCameraUsageDescription` for taking photos of game shelves
+  - `NSPhotoLibraryUsageDescription` for selecting photos from library
 
 ## Getting Started
 
@@ -192,6 +204,34 @@ The app requires NFC capabilities. These are already configured in the project:
 2. Check the **Tags** checkbox that appears
 3. Search will now include matching tags
 
+### Using Game Recognition (Experimental)
+
+#### Recognizing Games from Photos
+1. Open the navigation drawer (menu icon)
+2. Tap **Recognize Games**
+3. Choose **Take Photo** to capture a new image or **Choose from Gallery** to select an existing photo
+4. Take a clear photo of your game shelf showing the game spines
+5. Tap **Find Games** to process the image
+6. View the matched games with confidence scores:
+   - 🟢 **High confidence** (≥70%): Strong match
+   - 🟠 **Medium confidence** (50-69%): Probable match
+   - ⚪ **Low confidence** (<50%): Uncertain match
+
+#### Writing NFC Tags from Recognition Results
+1. After processing a photo, view the results list
+2. Games without NFC tags will show a blue NFC icon button
+3. Tap the NFC icon button to write a tag
+4. Hold your iPhone near an NFC tag
+5. After successful write, the button disappears and "NFC Tag" label appears
+6. Continue writing tags for other games in the list
+
+**Tips for Best Results:**
+- Ensure good lighting when taking photos
+- Keep text on game spines clearly visible and in focus
+- Avoid glare and shadows on the spines
+- Hold the camera parallel to the shelf for clearer text
+- Recognition works best with clear, printed text
+
 ### Sharing Games
 
 #### Share a Game
@@ -227,6 +267,9 @@ Access all your upcoming game sessions from the side menu:
 - **HTTP Client**: Dio with cookie management
 - **NFC**: nfc_manager package
 - **Image Caching**: cached_network_image
+- **OCR**: Google ML Kit Text Recognition
+- **Text Matching**: string_similarity for fuzzy matching
+- **Image Capture**: image_picker and camera packages
 
 ### Project Structure
 
@@ -252,6 +295,13 @@ The app uses BoardGameGeek's API:
   - Collection items endpoint: `/api/collectionitems` - Update ownership status
 
 ## Troubleshooting
+
+### Game Recognition Issues
+
+- **No games found**: Ensure the photo shows clear, readable text on game spines
+- **Poor accuracy**: Try retaking the photo with better lighting and less glare
+- **Camera permission denied**: Go to Settings > GameKeepr and enable Camera access
+- **Inconsistent results**: The feature is experimental; results may vary based on image quality, lighting, and text legibility
 
 ### NFC Issues
 
