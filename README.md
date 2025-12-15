@@ -22,6 +22,7 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
   - **All Games**: See all games in your database (owned and wishlist)
   - **Recently Played**: Quick access to games you've played, sorted by last play date
   - **Wishlist**: Dedicated view for games you want to add to your collection
+  - **Saved for Later**: Save non-owned games for future consideration (separate from wishlist)
   - **Scheduled Games**: See all upcoming game sessions in one place
 - **Smart Filtering**: Filter by base games only, expansions only, or show all
 - **Search**: Fast local search across your entire collection with optional filters for categories, mechanics, and tags
@@ -182,6 +183,28 @@ The app requires NFC and camera capabilities. These are already configured in th
 
 1. Scan a shelf NFC tag, or
 2. Navigate to a game with a location set and tap the location badge
+
+### Using Save for Later
+
+Save games you're interested in but not ready to wishlist or purchase yet. Unlike the wishlist, this is for games you want to keep track of for future consideration.
+
+#### Saving Games for Later
+1. Open a non-owned game's details screen
+2. In the ownership banner at the top, tap the **"Save"** button (bookmark icon)
+3. The button will change to **"Saved"** with a filled orange bookmark icon
+
+#### Viewing Saved Games
+1. Open the navigation drawer (menu icon)
+2. Tap **Saved for Later**
+3. View all games you've saved
+4. Use the search bar to filter saved games
+5. Tap any game to view full details
+
+#### Removing from Save for Later
+1. Open a saved game's details screen
+2. Tap the **"Saved"** button to toggle it off
+
+**Note**: Only non-owned games can be saved for later. A game can be both on your wishlist AND saved for later.
 
 ### Using Game Tags
 

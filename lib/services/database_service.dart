@@ -27,7 +27,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -56,6 +56,7 @@ class DatabaseService {
         expansions TEXT,
         owned INTEGER NOT NULL DEFAULT 1,
         wishlisted INTEGER NOT NULL DEFAULT 0,
+        saved_for_later INTEGER NOT NULL DEFAULT 0,
         has_nfc_tag INTEGER NOT NULL DEFAULT 0
       )
     ''');
@@ -302,6 +303,13 @@ class DatabaseService {
         ALTER TABLE plays ADD COLUMN synced_from_bgg INTEGER NOT NULL DEFAULT 0
       ''');
     }
+
+    if (oldVersion < 13) {
+      // Add saved_for_later column for version 13 - default to 0 (false) for existing games
+      await db.execute('''
+        ALTER TABLE games ADD COLUMN saved_for_later INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
   }
 
   Future<Game> insertGame(Game game) async {
@@ -400,6 +408,16 @@ class DatabaseService {
     );
   }
 
+  Future<int> updateGameSavedForLater(int gameId, bool savedForLater) async {
+    final db = await database;
+    return await db.update(
+      'games',
+      {'saved_for_later': savedForLater ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [gameId],
+    );
+  }
+
   Future<int> updateGameHasNfcTag(int gameId, bool hasNfcTag) async {
     final db = await database;
     return await db.update(
@@ -415,6 +433,17 @@ class DatabaseService {
     final maps = await db.query(
       'games',
       where: 'wishlisted = ?',
+      whereArgs: [1],
+      orderBy: 'name ASC',
+    );
+    return maps.map((map) => Game.fromMap(map)).toList();
+  }
+
+  Future<List<Game>> getSavedForLaterGames() async {
+    final db = await database;
+    final maps = await db.query(
+      'games',
+      where: 'saved_for_later = ?',
       whereArgs: [1],
       orderBy: 'name ASC',
     );

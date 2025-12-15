@@ -45,6 +45,7 @@ class Game {
   final List<ExpansionReference>? expansions; // If this is a base game, list of expansions
   final bool owned; // Whether this game is in the user's collection
   final bool wishlisted; // Whether this game is on the user's wishlist
+  final bool savedForLater; // Whether this game is saved for later
   final bool hasNfcTag; // Whether an NFC tag has been assigned to this game
 
   Game({
@@ -68,6 +69,7 @@ class Game {
     this.expansions,
     this.owned = true,
     this.wishlisted = false,
+    this.savedForLater = false,
     this.hasNfcTag = false,
   });
 
@@ -93,6 +95,7 @@ class Game {
       'expansions': expansions != null ? jsonEncode(expansions!.map((e) => e.toMap()).toList()) : null,
       'owned': owned ? 1 : 0,
       'wishlisted': wishlisted ? 1 : 0,
+      'saved_for_later': savedForLater ? 1 : 0,
       'has_nfc_tag': hasNfcTag ? 1 : 0,
     };
   }
@@ -133,6 +136,7 @@ class Game {
           : null,
       owned: map['owned'] == null ? true : (map['owned'] as int) == 1,
       wishlisted: map['wishlisted'] == null ? false : (map['wishlisted'] as int) == 1,
+      savedForLater: map['saved_for_later'] == null ? false : (map['saved_for_later'] as int) == 1,
       hasNfcTag: map['has_nfc_tag'] == null ? false : (map['has_nfc_tag'] as int) == 1,
     );
   }
@@ -158,6 +162,7 @@ class Game {
     List<ExpansionReference>? expansions,
     bool? owned,
     bool? wishlisted,
+    bool? savedForLater,
     bool? hasNfcTag,
   }) {
     return Game(
@@ -181,6 +186,7 @@ class Game {
       expansions: expansions ?? this.expansions,
       owned: owned ?? this.owned,
       wishlisted: wishlisted ?? this.wishlisted,
+      savedForLater: savedForLater ?? this.savedForLater,
       hasNfcTag: hasNfcTag ?? this.hasNfcTag,
     );
   }

@@ -99,6 +99,7 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
             location: existingGame.location,
             owned: existingGame.owned,
             wishlisted: existingGame.wishlisted,
+            savedForLater: existingGame.savedForLater,
           );
           await db.updateGame(updatedGame);
         } else {
@@ -156,6 +157,14 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
   Future<Game?> toggleWishlist(int gameId, bool wishlisted) async {
     final db = ref.read(databaseServiceProvider);
     await db.updateGameWishlisted(gameId, wishlisted);
+    await loadGames();
+    return await db.getGameById(gameId);
+  }
+
+  /// Toggle the saved for later status of a game
+  Future<Game?> toggleSavedForLater(int gameId, bool savedForLater) async {
+    final db = ref.read(databaseServiceProvider);
+    await db.updateGameSavedForLater(gameId, savedForLater);
     await loadGames();
     return await db.getGameById(gameId);
   }
@@ -424,6 +433,42 @@ final wishlistProvider = Provider<AsyncValue<List<Game>>>((ref) {
     data: (gamesList) {
       // Filter to only show wishlisted games
       var filtered = gamesList.where((game) => game.wishlisted).toList();
+
+      // Apply search filter
+      if (query.isNotEmpty) {
+        final tagsMap = tagsMapAsync.whenOrNull(data: (map) => map) ?? {};
+        filtered = filtered
+            .where((game) => _gameMatchesSearch(
+                  game,
+                  query,
+                  searchCategories,
+                  searchMechanics,
+                  searchTags,
+                  tagsMap,
+                ))
+            .toList();
+      }
+
+      return AsyncValue.data(filtered);
+    },
+    loading: () => const AsyncValue.loading(),
+    error: (error, stack) => AsyncValue.error(error, stack),
+  );
+});
+
+// Saved for Later Provider (games saved for later)
+final savedForLaterProvider = Provider<AsyncValue<List<Game>>>((ref) {
+  final games = ref.watch(gamesProvider);
+  final query = ref.watch(searchQueryProvider);
+  final searchCategories = ref.watch(searchCategoriesProvider);
+  final searchMechanics = ref.watch(searchMechanicsProvider);
+  final searchTags = ref.watch(searchTagsProvider);
+  final tagsMapAsync = ref.watch(gameTagsMapProvider);
+
+  return games.when(
+    data: (gamesList) {
+      // Filter to only show saved for later games
+      var filtered = gamesList.where((game) => game.savedForLater).toList();
 
       // Apply search filter
       if (query.isNotEmpty) {

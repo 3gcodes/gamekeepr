@@ -130,6 +130,47 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     }
   }
 
+  Future<void> _toggleSavedForLater() async {
+    final game = _detailedGame;
+    if (game == null || game.id == null) return;
+
+    final newSavedForLaterStatus = !game.savedForLater;
+
+    try {
+      final updatedGame = await ref.read(gamesProvider.notifier).toggleSavedForLater(
+        game.id!,
+        newSavedForLaterStatus,
+      );
+
+      if (updatedGame != null && mounted) {
+        setState(() {
+          _detailedGame = updatedGame;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newSavedForLaterStatus
+                  ? 'Saved for later'
+                  : 'Removed from saved for later',
+            ),
+            backgroundColor: newSavedForLaterStatus ? Colors.green : Colors.grey,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating saved for later: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _toggleOwned() async {
     final game = _detailedGame;
     if (game == null || game.id == null) return;
@@ -1065,6 +1106,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
         location: widget.game.location,
         owned: widget.game.owned,
         wishlisted: widget.game.wishlisted,
+        savedForLater: widget.game.savedForLater,
         hasNfcTag: widget.game.hasNfcTag,
       );
 
@@ -1124,16 +1166,18 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       // Refresh the games provider so the list updates
       ref.read(gamesProvider.notifier).loadGames();
 
-      setState(() {
-        _detailedGame = updatedGame;
-        _isLoadingDetails = false;
-      });
-    } catch (e) {
-      setState(() {
-        _isLoadingDetails = false;
-      });
-      // Show error snackbar
       if (mounted) {
+        setState(() {
+          _detailedGame = updatedGame;
+          _isLoadingDetails = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingDetails = false;
+        });
+        // Show error snackbar
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Could not load full details: $e'),
@@ -1155,14 +1199,18 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       final db = ref.read(databaseServiceProvider);
       final plays = await db.getPlaysForGame(widget.game.id!);
 
-      setState(() {
-        _plays = plays;
-        _isLoadingPlays = false;
-      });
+      if (mounted) {
+        setState(() {
+          _plays = plays;
+          _isLoadingPlays = false;
+        });
+      }
     } catch (e) {
-      setState(() {
-        _isLoadingPlays = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoadingPlays = false;
+        });
+      }
     }
   }
 
@@ -1174,12 +1222,12 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
           );
 
       // Update local state to reflect the change immediately
-      setState(() {
-        final currentGame = _detailedGame ?? widget.game;
-        _detailedGame = currentGame.copyWith(location: location ?? '');
-      });
-
       if (mounted) {
+        setState(() {
+          final currentGame = _detailedGame ?? widget.game;
+          _detailedGame = currentGame.copyWith(location: location ?? '');
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Location saved'),
@@ -2411,6 +2459,32 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                       style: TextStyle(
                         fontSize: 12,
                         color: game.wishlisted ? Colors.red : Colors.grey[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                if (!game.owned) const SizedBox(width: 4),
+                // Save for Later button (only for non-owned games)
+                if (!game.owned)
+                  TextButton.icon(
+                    onPressed: _toggleSavedForLater,
+                    icon: Icon(
+                      game.savedForLater ? Icons.bookmark : Icons.bookmark_border,
+                      size: 18,
+                      color: game.savedForLater ? Colors.orange[700] : Colors.grey[700],
+                    ),
+                    label: Text(
+                      game.savedForLater ? 'Saved' : 'Save',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: game.savedForLater ? Colors.orange[700] : Colors.grey[700],
                         fontWeight: FontWeight.w600,
                       ),
                     ),
