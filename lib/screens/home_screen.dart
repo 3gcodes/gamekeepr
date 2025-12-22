@@ -21,6 +21,7 @@ import 'write_shelf_tag_screen.dart';
 import 'bgg_search_screen.dart';
 import 'wishlist_screen.dart';
 import 'saved_for_later_screen.dart';
+import 'collectibles_screen.dart';
 import 'scheduled_games_screen.dart';
 import 'move_games_screen.dart';
 import 'active_loans_screen.dart';
@@ -622,6 +623,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SavedForLaterScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.category),
+            title: const Text('Collectibles'),
+            onTap: () {
+              Navigator.pop(context); // Close drawer
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CollectiblesScreen()),
               );
             },
           ),
