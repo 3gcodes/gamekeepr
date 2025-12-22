@@ -46,6 +46,7 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'nfc_fab',
         onPressed: () => _showNfcMenu(context),
         tooltip: 'NFC Actions',
         child: const Icon(Icons.nfc),

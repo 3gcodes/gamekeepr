@@ -42,6 +42,7 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
         title: const Text('Collectibles'),
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'add_collectible_fab',
         onPressed: () {
           Navigator.push(
             context,
