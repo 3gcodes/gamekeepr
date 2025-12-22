@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'scheduled_games_screen.dart';
 import 'active_loans_screen.dart';
 import 'move_games_screen.dart';
@@ -205,15 +206,50 @@ class _RecentlyPlayedScreen extends ConsumerWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Thumbnail placeholder
-                        Container(
-                          width: 60,
-                          height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[200],
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.casino, size: 32),
+                        // Game thumbnail
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: game.thumbnailUrl != null && game.thumbnailUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: game.thumbnailUrl!,
+                                  width: 60,
+                                  height: 60,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    width: 60,
+                                    height: 60,
+                                    color: Colors.grey[200],
+                                    child: const Center(
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Icon(
+                                      Icons.casino,
+                                      size: 32,
+                                      color: Colors.grey[400],
+                                    ),
+                                  ),
+                                )
+                              : Container(
+                                  width: 60,
+                                  height: 60,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Icon(
+                                    Icons.casino,
+                                    size: 32,
+                                    color: Colors.grey[400],
+                                  ),
+                                ),
                         ),
                         const SizedBox(width: 12),
                         // Game info
