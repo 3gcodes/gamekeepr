@@ -1,5 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 import '../models/collectible.dart';
 import '../providers/collectibles_provider.dart';
 import '../providers/games_provider.dart';
@@ -24,11 +28,14 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
   final _manufacturerController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _quantityController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
 
   CollectibleType _selectedType = CollectibleType.MINIATURE;
   int? _selectedGameId;
   bool _painted = false;
   bool _isLoading = false;
+  File? _selectedImage;
+  String? _imageUrl;
 
   @override
   void initState() {
@@ -43,6 +50,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
       _selectedType = c.type;
       _selectedGameId = c.gameId;
       _painted = c.painted;
+      _imageUrl = c.imageUrl;
     } else {
       // Adding mode
       _quantityController.text = '1';
@@ -50,6 +58,88 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         _selectedGameId = widget.preselectedGameId;
       }
     }
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
+
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to pick image: $e')),
+        );
+      }
+    }
+  }
+
+  Future<String?> _saveImageLocally(File imageFile) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final collectiblesDir = Directory('${appDir.path}/collectibles');
+      if (!await collectiblesDir.exists()) {
+        await collectiblesDir.create(recursive: true);
+      }
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'collectible_$timestamp${path.extension(imageFile.path)}';
+      final savedImage = await imageFile.copy('${collectiblesDir.path}/$fileName');
+
+      return savedImage.path;
+    } catch (e) {
+      print('Error saving image: $e');
+      return null;
+    }
+  }
+
+  void _showImageSourceDialog() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera),
+              title: const Text('Take Photo'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Choose from Gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+            ),
+            if (_selectedImage != null || _imageUrl != null)
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.red),
+                title: const Text('Remove Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _selectedImage = null;
+                    _imageUrl = null;
+                  });
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -69,6 +159,12 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
     });
 
     try {
+      // Save image if a new one was selected
+      String? finalImageUrl = _imageUrl;
+      if (_selectedImage != null) {
+        finalImageUrl = await _saveImageLocally(_selectedImage!);
+      }
+
       final collectible = Collectible(
         id: widget.collectible?.id,
         type: _selectedType,
@@ -80,7 +176,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         gameId: _selectedGameId,
         location: widget.collectible?.location,
         hasNfcTag: widget.collectible?.hasNfcTag ?? false,
-        imageUrl: widget.collectible?.imageUrl,
+        imageUrl: finalImageUrl,
         createdAt: widget.collectible?.createdAt,
       );
 
@@ -148,6 +244,57 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Image Picker
+            Center(
+              child: GestureDetector(
+                onTap: _showImageSourceDialog,
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey[400]!),
+                  ),
+                  child: _selectedImage != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.file(
+                            _selectedImage!,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : _imageUrl != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.file(
+                                File(_imageUrl!),
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.add_photo_alternate, size: 48, color: Colors.grey[600]),
+                                      const SizedBox(height: 8),
+                                      Text('Tap to add photo', style: TextStyle(color: Colors.grey[600])),
+                                    ],
+                                  );
+                                },
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.add_photo_alternate, size: 48, color: Colors.grey[600]),
+                                const SizedBox(height: 8),
+                                Text('Tap to add photo', style: TextStyle(color: Colors.grey[600])),
+                              ],
+                            ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+
             // Type Selector
             DropdownButtonFormField<CollectibleType>(
               value: _selectedType,
