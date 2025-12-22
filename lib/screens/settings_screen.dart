@@ -197,15 +197,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       // Share the file using iOS share sheet
       // User can then choose to save to iCloud Drive, Files, etc.
       final result = await Share.shareXFiles(
-        [XFile(backupPath, name: 'gamekeepr_backup_$formattedDate.db', mimeType: 'application/octet-stream')],
-        text: 'Game Keepr database backup from $formattedDate',
+        [XFile(backupPath, name: 'gamekeepr_backup_$formattedDate.zip', mimeType: 'application/zip')],
+        text: 'Game Keepr backup (database + images) from $formattedDate',
         sharePositionOrigin: sharePositionOrigin,
       );
 
       if (mounted && result.status == ShareResultStatus.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Backup file ready! Save it to iCloud Drive or Files app.'),
+            content: Text('Backup created with database + images! Save it to iCloud Drive or Files app.'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -254,10 +254,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Restore Database'),
+        title: const Text('Restore Backup'),
         content: const Text(
           'Are you sure you want to restore from this backup? '
-          'Your current data will be replaced. This cannot be undone.',
+          'Your current data and collectible images will be replaced. This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -277,11 +277,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       try {
         await DatabaseService.instance.restoreDatabase(filePath);
         await ref.read(gamesProvider.notifier).loadGames();
+        await ref.read(collectiblesProvider.notifier).loadCollectibles();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Database restored successfully!'),
+              content: Text('Backup restored successfully! Database and images recovered.'),
               backgroundColor: Colors.green,
             ),
           );

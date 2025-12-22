@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive_io.dart';
 import '../models/game.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
@@ -569,26 +570,51 @@ class DatabaseService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// Export database to a file for backup
-  /// Returns the path to the exported file in a shareable location
+  /// Export database and collectible images to a zip file for backup
+  /// Returns the path to the exported zip file in a shareable location
   Future<String> exportDatabase() async {
     // Get the database path
     final dbPath = await getDatabasesPath();
     final dbFile = File(join(dbPath, 'gamekeepr.db'));
 
-    // Use temporary directory which is accessible for sharing
+    // Get collectibles images directory
+    final appDir = await getApplicationDocumentsDirectory();
+    final collectiblesDir = Directory(join(appDir.path, 'collectibles'));
+
+    // Create archive
+    final archive = Archive();
+
+    // Add database file to archive
+    final dbBytes = await dbFile.readAsBytes();
+    archive.addFile(ArchiveFile('gamekeepr.db', dbBytes.length, dbBytes));
+
+    // Add collectible images to archive if directory exists
+    if (await collectiblesDir.exists()) {
+      final imageFiles = collectiblesDir.listSync().whereType<File>();
+      for (final imageFile in imageFiles) {
+        final imageBytes = await imageFile.readAsBytes();
+        final relativePath = 'collectibles/${basename(imageFile.path)}';
+        archive.addFile(ArchiveFile(relativePath, imageBytes.length, imageBytes));
+      }
+      print('📦 Added ${imageFiles.length} collectible images to backup');
+    }
+
+    // Encode to zip
+    final zipEncoder = ZipEncoder();
+    final zipData = zipEncoder.encode(archive);
+
+    // Write to temporary directory
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final backupPath = join(tempDir.path, 'gamekeepr_backup_$timestamp.db');
+    final backupPath = join(tempDir.path, 'gamekeepr_backup_$timestamp.zip');
+    final zipFile = File(backupPath);
+    await zipFile.writeAsBytes(zipData!);
 
-    // Copy the database file
-    await dbFile.copy(backupPath);
-
-    print('📦 Database exported to: $backupPath');
+    print('📦 Backup exported to: $backupPath');
     return backupPath;
   }
 
-  /// Restore database from a backup file
+  /// Restore database and collectible images from a backup zip file
   Future<void> restoreDatabase(String backupFilePath) async {
     // Close the current database connection
     if (_database != null) {
@@ -596,18 +622,48 @@ class DatabaseService {
       _database = null;
     }
 
-    // Get the database path
+    // Read and decode the zip file
+    final backupFile = File(backupFilePath);
+    final bytes = await backupFile.readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+
+    // Get paths
     final dbPath = await getDatabasesPath();
     final dbFile = File(join(dbPath, 'gamekeepr.db'));
+    final appDir = await getApplicationDocumentsDirectory();
+    final collectiblesDir = Directory(join(appDir.path, 'collectibles'));
 
-    // Copy the backup file to the database location
-    final backupFile = File(backupFilePath);
-    await backupFile.copy(dbFile.path);
+    // Ensure collectibles directory exists
+    if (!await collectiblesDir.exists()) {
+      await collectiblesDir.create(recursive: true);
+    }
+
+    // Extract files from archive
+    int imageCount = 0;
+    for (final file in archive) {
+      final filename = file.name;
+
+      if (filename == 'gamekeepr.db') {
+        // Restore database
+        final data = file.content as List<int>;
+        await dbFile.writeAsBytes(data);
+        print('📥 Database file restored');
+      } else if (filename.startsWith('collectibles/')) {
+        // Restore collectible image
+        final data = file.content as List<int>;
+        final imagePath = join(collectiblesDir.path, basename(filename));
+        final imageFile = File(imagePath);
+        await imageFile.writeAsBytes(data);
+        imageCount++;
+      }
+    }
+
+    print('📥 Restored $imageCount collectible images');
 
     // Reinitialize the database
     _database = await _initDB('gamekeepr.db');
 
-    print('📥 Database restored from: $backupFilePath');
+    print('📥 Backup restored successfully from: $backupFilePath');
   }
 
   /// Insert a new play record
