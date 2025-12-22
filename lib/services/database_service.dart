@@ -28,7 +28,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -175,6 +175,8 @@ class DatabaseService {
         location TEXT,
         has_nfc_tag INTEGER NOT NULL DEFAULT 0,
         image_url TEXT,
+        images TEXT,
+        cover_image_index INTEGER NOT NULL DEFAULT 0,
         created_at TEXT,
         updated_at TEXT,
         FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE SET NULL
@@ -379,6 +381,33 @@ class DatabaseService {
       await db.execute('''
         CREATE INDEX idx_collectible_name ON collectibles(name)
       ''');
+    }
+
+    if (oldVersion < 15) {
+      // Add multiple images support for collectibles (version 15)
+      await db.execute('''
+        ALTER TABLE collectibles ADD COLUMN images TEXT
+      ''');
+
+      await db.execute('''
+        ALTER TABLE collectibles ADD COLUMN cover_image_index INTEGER NOT NULL DEFAULT 0
+      ''');
+
+      // Migrate existing image_url data to images array
+      final collectibles = await db.query('collectibles');
+      for (final collectible in collectibles) {
+        final imageUrl = collectible['image_url'] as String?;
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          // Convert single image_url to JSON array
+          final imagesJson = '["$imageUrl"]';
+          await db.update(
+            'collectibles',
+            {'images': imagesJson, 'cover_image_index': 0},
+            where: 'id = ?',
+            whereArgs: [collectible['id']],
+          );
+        }
+      }
     }
   }
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum CollectibleType {
   MINIATURE,
   // Future types can be added here:
@@ -43,7 +45,8 @@ class Collectible {
   final int quantity;
   final String? location; // Shelf location as generic string
   final bool hasNfcTag;
-  final String? imageUrl;
+  final List<String> images; // Multiple image paths (max 3)
+  final int coverImageIndex; // Index of the cover image (0-2)
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -58,7 +61,8 @@ class Collectible {
     this.quantity = 1,
     this.location,
     this.hasNfcTag = false,
-    this.imageUrl,
+    this.images = const [],
+    this.coverImageIndex = 0,
     this.createdAt,
     this.updatedAt,
   });
@@ -75,13 +79,28 @@ class Collectible {
       'quantity': quantity,
       'location': location,
       'has_nfc_tag': hasNfcTag ? 1 : 0,
-      'image_url': imageUrl,
+      'images': jsonEncode(images),
+      'cover_image_index': coverImageIndex,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
   }
 
   factory Collectible.fromMap(Map<String, dynamic> map) {
+    // Parse images from JSON, fallback to old image_url for backward compatibility
+    List<String> imagesList = [];
+    if (map['images'] != null && map['images'] is String && (map['images'] as String).isNotEmpty) {
+      try {
+        final decoded = jsonDecode(map['images'] as String);
+        imagesList = List<String>.from(decoded);
+      } catch (e) {
+        print('Error parsing images JSON: $e');
+      }
+    } else if (map['image_url'] != null && (map['image_url'] as String).isNotEmpty) {
+      // Backward compatibility: convert old single image_url to images array
+      imagesList = [map['image_url'] as String];
+    }
+
     return Collectible(
       id: map['id'] as int?,
       type: CollectibleTypeExtension.fromString(map['type'] as String),
@@ -93,7 +112,8 @@ class Collectible {
       quantity: map['quantity'] as int? ?? 1,
       location: map['location'] as String?,
       hasNfcTag: map['has_nfc_tag'] == null ? false : (map['has_nfc_tag'] as int) == 1,
-      imageUrl: map['image_url'] as String?,
+      images: imagesList,
+      coverImageIndex: map['cover_image_index'] as int? ?? 0,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -114,7 +134,8 @@ class Collectible {
     int? quantity,
     String? location,
     bool? hasNfcTag,
-    String? imageUrl,
+    List<String>? images,
+    int? coverImageIndex,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -129,7 +150,8 @@ class Collectible {
       quantity: quantity ?? this.quantity,
       location: location ?? this.location,
       hasNfcTag: hasNfcTag ?? this.hasNfcTag,
-      imageUrl: imageUrl ?? this.imageUrl,
+      images: images ?? this.images,
+      coverImageIndex: coverImageIndex ?? this.coverImageIndex,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -141,4 +163,16 @@ class Collectible {
   bool get isPainted => type == CollectibleType.MINIATURE && painted;
 
   bool get hasGame => gameId != null;
+
+  // Get the cover image URL (for backward compatibility and convenience)
+  String? get imageUrl {
+    if (images.isEmpty) return null;
+    if (coverImageIndex >= 0 && coverImageIndex < images.length) {
+      return images[coverImageIndex];
+    }
+    return images.first;
+  }
+
+  // Check if collectible has any images
+  bool get hasImages => images.isNotEmpty;
 }

@@ -34,8 +34,9 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
   int? _selectedGameId;
   bool _painted = false;
   bool _isLoading = false;
-  File? _selectedImage;
-  String? _imageUrl;
+  final List<File?> _selectedImages = [null, null, null]; // Max 3 images
+  final List<String?> _imageUrls = [null, null, null]; // Existing image URLs
+  int _coverImageIndex = 0;
 
   @override
   void initState() {
@@ -50,7 +51,11 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
       _selectedType = c.type;
       _selectedGameId = c.gameId;
       _painted = c.painted;
-      _imageUrl = c.imageUrl;
+      _coverImageIndex = c.coverImageIndex;
+      // Load existing images
+      for (int i = 0; i < c.images.length && i < 3; i++) {
+        _imageUrls[i] = c.images[i];
+      }
     } else {
       // Adding mode
       _quantityController.text = '1';
@@ -60,7 +65,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
     }
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImage(ImageSource source, int index) async {
     try {
       final XFile? image = await _picker.pickImage(
         source: source,
@@ -71,7 +76,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
 
       if (image != null) {
         setState(() {
-          _selectedImage = File(image.path);
+          _selectedImages[index] = File(image.path);
         });
       }
     } catch (e) {
@@ -102,7 +107,9 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
     }
   }
 
-  void _showImageSourceDialog() {
+  void _showImageSourceDialog(int index) {
+    final hasImage = _selectedImages[index] != null || _imageUrls[index] != null;
+
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -113,7 +120,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
               title: const Text('Take Photo'),
               onTap: () {
                 Navigator.pop(context);
-                _pickImage(ImageSource.camera);
+                _pickImage(ImageSource.camera, index);
               },
             ),
             ListTile(
@@ -121,18 +128,22 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
               title: const Text('Choose from Gallery'),
               onTap: () {
                 Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
+                _pickImage(ImageSource.gallery, index);
               },
             ),
-            if (_selectedImage != null || _imageUrl != null)
+            if (hasImage)
               ListTile(
                 leading: const Icon(Icons.delete, color: Colors.red),
                 title: const Text('Remove Photo'),
                 onTap: () {
                   Navigator.pop(context);
                   setState(() {
-                    _selectedImage = null;
-                    _imageUrl = null;
+                    _selectedImages[index] = null;
+                    _imageUrls[index] = null;
+                    // If we removed the cover image, set cover to first available image
+                    if (_coverImageIndex == index) {
+                      _coverImageIndex = _findFirstImageIndex();
+                    }
                   });
                 },
               ),
@@ -140,6 +151,15 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         ),
       ),
     );
+  }
+
+  int _findFirstImageIndex() {
+    for (int i = 0; i < 3; i++) {
+      if (_selectedImages[i] != null || _imageUrls[i] != null) {
+        return i;
+      }
+    }
+    return 0;
   }
 
   @override
@@ -159,10 +179,25 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
     });
 
     try {
-      // Save image if a new one was selected
-      String? finalImageUrl = _imageUrl;
-      if (_selectedImage != null) {
-        finalImageUrl = await _saveImageLocally(_selectedImage!);
+      // Save all images
+      final List<String> finalImages = [];
+      for (int i = 0; i < 3; i++) {
+        if (_selectedImages[i] != null) {
+          // New image selected, save it
+          final savedPath = await _saveImageLocally(_selectedImages[i]!);
+          if (savedPath != null) {
+            finalImages.add(savedPath);
+          }
+        } else if (_imageUrls[i] != null) {
+          // Existing image, keep it
+          finalImages.add(_imageUrls[i]!);
+        }
+      }
+
+      // Adjust cover image index if necessary
+      int adjustedCoverIndex = _coverImageIndex;
+      if (adjustedCoverIndex >= finalImages.length) {
+        adjustedCoverIndex = finalImages.isNotEmpty ? 0 : 0;
       }
 
       final collectible = Collectible(
@@ -176,7 +211,8 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         gameId: _selectedGameId,
         location: widget.collectible?.location,
         hasNfcTag: widget.collectible?.hasNfcTag ?? false,
-        imageUrl: finalImageUrl,
+        images: finalImages,
+        coverImageIndex: adjustedCoverIndex,
         createdAt: widget.collectible?.createdAt,
       );
 
@@ -244,54 +280,129 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Image Picker
-            Center(
-              child: GestureDetector(
-                onTap: _showImageSourceDialog,
-                child: Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[400]!),
-                  ),
-                  child: _selectedImage != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.file(
-                            _selectedImage!,
-                            fit: BoxFit.cover,
-                          ),
-                        )
-                      : _imageUrl != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                File(_imageUrl!),
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) {
-                                  return Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.add_photo_alternate, size: 48, color: Colors.grey[600]),
-                                      const SizedBox(height: 8),
-                                      Text('Tap to add photo', style: TextStyle(color: Colors.grey[600])),
-                                    ],
-                                  );
-                                },
+            // Multiple Image Picker (max 3)
+            const Text(
+              'Photos (max 3)',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Tap star to set cover photo',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(3, (index) {
+                final hasImage = _selectedImages[index] != null || _imageUrls[index] != null;
+                final isCover = _coverImageIndex == index && hasImage;
+
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showImageSourceDialog(index),
+                          child: Stack(
+                            children: [
+                              Container(
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isCover ? Colors.amber : Colors.grey[400]!,
+                                    width: isCover ? 3 : 1,
+                                  ),
+                                ),
+                                child: _selectedImages[index] != null
+                                    ? ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.file(
+                                          _selectedImages[index]!,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                        ),
+                                      )
+                                    : _imageUrls[index] != null
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.file(
+                                              File(_imageUrls[index]!),
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Center(
+                                                  child: Icon(
+                                                    Icons.add_photo_alternate,
+                                                    size: 32,
+                                                    color: Colors.grey[600],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          )
+                                        : Center(
+                                            child: Icon(
+                                              Icons.add_photo_alternate,
+                                              size: 32,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
                               ),
-                            )
-                          : Column(
+                              if (isCover)
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.amber,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.star,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        if (hasImage)
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _coverImageIndex = index;
+                              });
+                            },
+                            child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.add_photo_alternate, size: 48, color: Colors.grey[600]),
-                                const SizedBox(height: 8),
-                                Text('Tap to add photo', style: TextStyle(color: Colors.grey[600])),
+                                Icon(
+                                  isCover ? Icons.star : Icons.star_border,
+                                  size: 16,
+                                  color: isCover ? Colors.amber : Colors.grey,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  isCover ? 'Cover' : 'Set cover',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isCover ? Colors.amber : Colors.grey,
+                                  ),
+                                ),
                               ],
                             ),
-                ),
-              ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
             ),
             const SizedBox(height: 24),
 
