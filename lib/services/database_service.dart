@@ -8,6 +8,7 @@ import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
 import '../models/game_with_loan_info.dart';
 import '../models/game_with_play_info.dart';
+import '../models/collectible.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -27,7 +28,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -158,6 +159,41 @@ class DatabaseService {
     // Create index on tag for faster searches and autocomplete
     await db.execute('''
       CREATE INDEX idx_tag ON game_tags(tag)
+    ''');
+
+    // Create collectibles table
+    await db.execute('''
+      CREATE TABLE collectibles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        game_id INTEGER,
+        manufacturer TEXT,
+        description TEXT,
+        painted INTEGER NOT NULL DEFAULT 0,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        location TEXT,
+        has_nfc_tag INTEGER NOT NULL DEFAULT 0,
+        image_url TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE SET NULL
+      )
+    ''');
+
+    // Create index on game_id for faster lookups
+    await db.execute('''
+      CREATE INDEX idx_collectible_game_id ON collectibles(game_id)
+    ''');
+
+    // Create index on type for filtering
+    await db.execute('''
+      CREATE INDEX idx_collectible_type ON collectibles(type)
+    ''');
+
+    // Create index on name for search
+    await db.execute('''
+      CREATE INDEX idx_collectible_name ON collectibles(name)
     ''');
   }
 
@@ -308,6 +344,40 @@ class DatabaseService {
       // Add saved_for_later column for version 13 - default to 0 (false) for existing games
       await db.execute('''
         ALTER TABLE games ADD COLUMN saved_for_later INTEGER NOT NULL DEFAULT 0
+      ''');
+    }
+
+    if (oldVersion < 14) {
+      // Add collectibles table for version 14
+      await db.execute('''
+        CREATE TABLE collectibles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          name TEXT NOT NULL,
+          game_id INTEGER,
+          manufacturer TEXT,
+          description TEXT,
+          painted INTEGER NOT NULL DEFAULT 0,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          location TEXT,
+          has_nfc_tag INTEGER NOT NULL DEFAULT 0,
+          image_url TEXT,
+          created_at TEXT,
+          updated_at TEXT,
+          FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE SET NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_game_id ON collectibles(game_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_type ON collectibles(type)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_name ON collectibles(name)
       ''');
     }
   }
@@ -927,6 +997,176 @@ class DatabaseService {
       where: 'tag = ?',
       whereArgs: [tag.toLowerCase()],
     );
+  }
+
+  // ============================================================================
+  // Collectibles CRUD Operations
+  // ============================================================================
+
+  /// Insert a new collectible
+  Future<Collectible> insertCollectible(Collectible collectible) async {
+    final db = await database;
+    final now = DateTime.now();
+    final collectibleWithTimestamps = collectible.copyWith(
+      createdAt: collectible.createdAt ?? now,
+      updatedAt: now,
+    );
+    final id = await db.insert(
+      'collectibles',
+      collectibleWithTimestamps.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return collectibleWithTimestamps.copyWith(id: id);
+  }
+
+  /// Get a collectible by ID
+  Future<Collectible?> getCollectibleById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isEmpty) return null;
+    return Collectible.fromMap(maps.first);
+  }
+
+  /// Get all collectibles
+  Future<List<Collectible>> getAllCollectibles({String? orderBy}) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      orderBy: orderBy ?? 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles by type
+  Future<List<Collectible>> getCollectiblesByType(CollectibleType type) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'type = ?',
+      whereArgs: [type.value],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles for a specific game
+  Future<List<Collectible>> getCollectiblesForGame(int gameId) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles by location
+  Future<List<Collectible>> getCollectiblesByLocation(String location) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'location = ?',
+      whereArgs: [location],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Search collectibles by name
+  Future<List<Collectible>> searchCollectibles(String query) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'name LIKE ?',
+      whereArgs: ['%$query%'],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Update a collectible
+  Future<int> updateCollectible(Collectible collectible) async {
+    final db = await database;
+    final collectibleWithTimestamp = collectible.copyWith(
+      updatedAt: DateTime.now(),
+    );
+    return await db.update(
+      'collectibles',
+      collectibleWithTimestamp.toMap(),
+      where: 'id = ?',
+      whereArgs: [collectible.id],
+    );
+  }
+
+  /// Update collectible location
+  Future<int> updateCollectibleLocation(int collectibleId, String location) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'location': location, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Update collectible painted status
+  Future<int> updateCollectiblePainted(int collectibleId, bool painted) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'painted': painted ? 1 : 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Update collectible has NFC tag status
+  Future<int> updateCollectibleHasNfcTag(int collectibleId, bool hasNfcTag) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'has_nfc_tag': hasNfcTag ? 1 : 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Delete a collectible
+  Future<int> deleteCollectible(int id) async {
+    final db = await database;
+    return await db.delete(
+      'collectibles',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Get count of collectibles
+  Future<int> getCollectibleCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM collectibles');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Get count of collectibles by type
+  Future<int> getCollectibleCountByType(CollectibleType type) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM collectibles WHERE type = ?',
+      [type.value],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<void> close() async {
