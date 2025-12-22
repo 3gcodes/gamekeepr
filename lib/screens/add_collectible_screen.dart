@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/collectible.dart';
-import '../models/game.dart';
 import '../providers/collectibles_provider.dart';
 import '../providers/games_provider.dart';
 

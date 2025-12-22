@@ -278,16 +278,18 @@ class _CollectibleDetailsScreenState extends ConsumerState<CollectibleDetailsScr
             const SizedBox(height: 8),
             LocationPicker(
               initialLocation: _currentCollectible.location,
-              onLocationSelected: (location) async {
-                if (_currentCollectible.id != null) {
+              onLocationChanged: (location) async {
+                if (_currentCollectible.id != null && location != null) {
                   await ref.read(collectiblesProvider.notifier).updateCollectibleLocation(
                     _currentCollectible.id!,
                     location,
                   );
                   await _refreshCollectible();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Location set to $location')),
-                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Location set to $location')),
+                    );
+                  }
                 }
               },
             ),
