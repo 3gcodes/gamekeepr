@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -435,10 +436,12 @@ class _ShelfCollectibleListItem extends StatelessWidget {
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: collectible.imageUrl!,
+                        child: Image.file(
+                          File(collectible.imageUrl!),
+                          width: 60,
+                          height: 60,
                           fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => Icon(
+                          errorBuilder: (context, error, stackTrace) => Icon(
                             Icons.category,
                             color: Colors.grey[400],
                           ),

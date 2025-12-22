@@ -2484,10 +2484,12 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: collectible.imageUrl!,
+                        child: Image.file(
+                          File(collectible.imageUrl!),
+                          width: 50,
+                          height: 50,
                           fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => Icon(
+                          errorBuilder: (context, error, stackTrace) => Icon(
                             Icons.category,
                             color: Colors.grey[400],
                           ),

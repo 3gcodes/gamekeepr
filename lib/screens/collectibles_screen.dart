@@ -1,6 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/collectibles_provider.dart';
 import '../providers/games_provider.dart';
 import '../models/collectible.dart';
@@ -246,13 +246,12 @@ class _CollectibleListItem extends ConsumerWidget {
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: collectible.imageUrl!,
+                        child: Image.file(
+                          File(collectible.imageUrl!),
+                          width: 60,
+                          height: 60,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => const Center(
-                            child: CircularProgressIndicator(),
-                          ),
-                          errorWidget: (context, url, error) => Icon(
+                          errorBuilder: (context, error, stackTrace) => Icon(
                             Icons.category,
                             color: Colors.grey[400],
                             size: 32,
