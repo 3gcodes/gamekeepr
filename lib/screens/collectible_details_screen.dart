@@ -157,27 +157,65 @@ class _CollectibleDetailsScreenState extends ConsumerState<CollectibleDetailsScr
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image
-            if (_currentCollectible.imageUrl != null)
-              Center(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: CachedNetworkImage(
-                    imageUrl: _currentCollectible.imageUrl!,
-                    width: 200,
-                    height: 200,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-                    errorWidget: (context, url, error) => Container(
-                      width: 200,
-                      height: 200,
-                      color: Colors.grey[200],
-                      child: const Icon(Icons.category, size: 64),
-                    ),
-                  ),
+            // Images Gallery
+            if (_currentCollectible.hasImages) ...[
+              SizedBox(
+                height: 220,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _currentCollectible.images.length,
+                  itemBuilder: (context, index) {
+                    final isCover = index == _currentCollectible.coverImageIndex;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.file(
+                              File(_currentCollectible.images[index]),
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => Container(
+                                width: 200,
+                                height: 200,
+                                color: Colors.grey[200],
+                                child: const Icon(Icons.category, size: 64),
+                              ),
+                            ),
+                          ),
+                          if (isCover)
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.amber,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.star,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-              )
-            else
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  '${_currentCollectible.images.length} photo${_currentCollectible.images.length > 1 ? 's' : ''}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ),
+            ] else
               Center(
                 child: Container(
                   width: 200,
