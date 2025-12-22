@@ -255,6 +255,7 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
                     labelText: 'Associated Game (Optional)',
                     border: OutlineInputBorder(),
                   ),
+                  isExpanded: true,
                   items: [
                     const DropdownMenuItem<int?>(
                       value: null,
@@ -263,7 +264,11 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
                     ...ownedGames.map((game) {
                       return DropdownMenuItem<int?>(
                         value: game.id,
-                        child: Text(game.name),
+                        child: Text(
+                          game.name,
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
                       );
                     }),
                   ],
