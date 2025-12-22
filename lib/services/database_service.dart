@@ -2,12 +2,14 @@ import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive_io.dart';
 import '../models/game.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
 import '../models/game_with_loan_info.dart';
 import '../models/game_with_play_info.dart';
+import '../models/collectible.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -27,7 +29,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 15,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -158,6 +160,43 @@ class DatabaseService {
     // Create index on tag for faster searches and autocomplete
     await db.execute('''
       CREATE INDEX idx_tag ON game_tags(tag)
+    ''');
+
+    // Create collectibles table
+    await db.execute('''
+      CREATE TABLE collectibles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        game_id INTEGER,
+        manufacturer TEXT,
+        description TEXT,
+        painted INTEGER NOT NULL DEFAULT 0,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        location TEXT,
+        has_nfc_tag INTEGER NOT NULL DEFAULT 0,
+        image_url TEXT,
+        images TEXT,
+        cover_image_index INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE SET NULL
+      )
+    ''');
+
+    // Create index on game_id for faster lookups
+    await db.execute('''
+      CREATE INDEX idx_collectible_game_id ON collectibles(game_id)
+    ''');
+
+    // Create index on type for filtering
+    await db.execute('''
+      CREATE INDEX idx_collectible_type ON collectibles(type)
+    ''');
+
+    // Create index on name for search
+    await db.execute('''
+      CREATE INDEX idx_collectible_name ON collectibles(name)
     ''');
   }
 
@@ -309,6 +348,67 @@ class DatabaseService {
       await db.execute('''
         ALTER TABLE games ADD COLUMN saved_for_later INTEGER NOT NULL DEFAULT 0
       ''');
+    }
+
+    if (oldVersion < 14) {
+      // Add collectibles table for version 14
+      await db.execute('''
+        CREATE TABLE collectibles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          type TEXT NOT NULL,
+          name TEXT NOT NULL,
+          game_id INTEGER,
+          manufacturer TEXT,
+          description TEXT,
+          painted INTEGER NOT NULL DEFAULT 0,
+          quantity INTEGER NOT NULL DEFAULT 1,
+          location TEXT,
+          has_nfc_tag INTEGER NOT NULL DEFAULT 0,
+          image_url TEXT,
+          created_at TEXT,
+          updated_at TEXT,
+          FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE SET NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_game_id ON collectibles(game_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_type ON collectibles(type)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_collectible_name ON collectibles(name)
+      ''');
+    }
+
+    if (oldVersion < 15) {
+      // Add multiple images support for collectibles (version 15)
+      await db.execute('''
+        ALTER TABLE collectibles ADD COLUMN images TEXT
+      ''');
+
+      await db.execute('''
+        ALTER TABLE collectibles ADD COLUMN cover_image_index INTEGER NOT NULL DEFAULT 0
+      ''');
+
+      // Migrate existing image_url data to images array
+      final collectibles = await db.query('collectibles');
+      for (final collectible in collectibles) {
+        final imageUrl = collectible['image_url'] as String?;
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          // Convert single image_url to JSON array
+          final imagesJson = '["$imageUrl"]';
+          await db.update(
+            'collectibles',
+            {'images': imagesJson, 'cover_image_index': 0},
+            where: 'id = ?',
+            whereArgs: [collectible['id']],
+          );
+        }
+      }
     }
   }
 
@@ -470,26 +570,51 @@ class DatabaseService {
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
-  /// Export database to a file for backup
-  /// Returns the path to the exported file in a shareable location
+  /// Export database and collectible images to a zip file for backup
+  /// Returns the path to the exported zip file in a shareable location
   Future<String> exportDatabase() async {
     // Get the database path
     final dbPath = await getDatabasesPath();
     final dbFile = File(join(dbPath, 'gamekeepr.db'));
 
-    // Use temporary directory which is accessible for sharing
+    // Get collectibles images directory
+    final appDir = await getApplicationDocumentsDirectory();
+    final collectiblesDir = Directory(join(appDir.path, 'collectibles'));
+
+    // Create archive
+    final archive = Archive();
+
+    // Add database file to archive
+    final dbBytes = await dbFile.readAsBytes();
+    archive.addFile(ArchiveFile('gamekeepr.db', dbBytes.length, dbBytes));
+
+    // Add collectible images to archive if directory exists
+    if (await collectiblesDir.exists()) {
+      final imageFiles = collectiblesDir.listSync().whereType<File>();
+      for (final imageFile in imageFiles) {
+        final imageBytes = await imageFile.readAsBytes();
+        final relativePath = 'collectibles/${basename(imageFile.path)}';
+        archive.addFile(ArchiveFile(relativePath, imageBytes.length, imageBytes));
+      }
+      print('📦 Added ${imageFiles.length} collectible images to backup');
+    }
+
+    // Encode to zip
+    final zipEncoder = ZipEncoder();
+    final zipData = zipEncoder.encode(archive);
+
+    // Write to temporary directory
     final tempDir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final backupPath = join(tempDir.path, 'gamekeepr_backup_$timestamp.db');
+    final backupPath = join(tempDir.path, 'gamekeepr_backup_$timestamp.zip');
+    final zipFile = File(backupPath);
+    await zipFile.writeAsBytes(zipData!);
 
-    // Copy the database file
-    await dbFile.copy(backupPath);
-
-    print('📦 Database exported to: $backupPath');
+    print('📦 Backup exported to: $backupPath');
     return backupPath;
   }
 
-  /// Restore database from a backup file
+  /// Restore database and collectible images from a backup zip file
   Future<void> restoreDatabase(String backupFilePath) async {
     // Close the current database connection
     if (_database != null) {
@@ -497,18 +622,48 @@ class DatabaseService {
       _database = null;
     }
 
-    // Get the database path
+    // Read and decode the zip file
+    final backupFile = File(backupFilePath);
+    final bytes = await backupFile.readAsBytes();
+    final archive = ZipDecoder().decodeBytes(bytes);
+
+    // Get paths
     final dbPath = await getDatabasesPath();
     final dbFile = File(join(dbPath, 'gamekeepr.db'));
+    final appDir = await getApplicationDocumentsDirectory();
+    final collectiblesDir = Directory(join(appDir.path, 'collectibles'));
 
-    // Copy the backup file to the database location
-    final backupFile = File(backupFilePath);
-    await backupFile.copy(dbFile.path);
+    // Ensure collectibles directory exists
+    if (!await collectiblesDir.exists()) {
+      await collectiblesDir.create(recursive: true);
+    }
+
+    // Extract files from archive
+    int imageCount = 0;
+    for (final file in archive) {
+      final filename = file.name;
+
+      if (filename == 'gamekeepr.db') {
+        // Restore database
+        final data = file.content as List<int>;
+        await dbFile.writeAsBytes(data);
+        print('📥 Database file restored');
+      } else if (filename.startsWith('collectibles/')) {
+        // Restore collectible image
+        final data = file.content as List<int>;
+        final imagePath = join(collectiblesDir.path, basename(filename));
+        final imageFile = File(imagePath);
+        await imageFile.writeAsBytes(data);
+        imageCount++;
+      }
+    }
+
+    print('📥 Restored $imageCount collectible images');
 
     // Reinitialize the database
     _database = await _initDB('gamekeepr.db');
 
-    print('📥 Database restored from: $backupFilePath');
+    print('📥 Backup restored successfully from: $backupFilePath');
   }
 
   /// Insert a new play record
@@ -927,6 +1082,176 @@ class DatabaseService {
       where: 'tag = ?',
       whereArgs: [tag.toLowerCase()],
     );
+  }
+
+  // ============================================================================
+  // Collectibles CRUD Operations
+  // ============================================================================
+
+  /// Insert a new collectible
+  Future<Collectible> insertCollectible(Collectible collectible) async {
+    final db = await database;
+    final now = DateTime.now();
+    final collectibleWithTimestamps = collectible.copyWith(
+      createdAt: collectible.createdAt ?? now,
+      updatedAt: now,
+    );
+    final id = await db.insert(
+      'collectibles',
+      collectibleWithTimestamps.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return collectibleWithTimestamps.copyWith(id: id);
+  }
+
+  /// Get a collectible by ID
+  Future<Collectible?> getCollectibleById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (maps.isEmpty) return null;
+    return Collectible.fromMap(maps.first);
+  }
+
+  /// Get all collectibles
+  Future<List<Collectible>> getAllCollectibles({String? orderBy}) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      orderBy: orderBy ?? 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles by type
+  Future<List<Collectible>> getCollectiblesByType(CollectibleType type) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'type = ?',
+      whereArgs: [type.value],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles for a specific game
+  Future<List<Collectible>> getCollectiblesForGame(int gameId) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Get collectibles by location
+  Future<List<Collectible>> getCollectiblesByLocation(String location) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'location = ?',
+      whereArgs: [location],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Search collectibles by name
+  Future<List<Collectible>> searchCollectibles(String query) async {
+    final db = await database;
+    final maps = await db.query(
+      'collectibles',
+      where: 'name LIKE ?',
+      whereArgs: ['%$query%'],
+      orderBy: 'name ASC',
+    );
+
+    return maps.map((map) => Collectible.fromMap(map)).toList();
+  }
+
+  /// Update a collectible
+  Future<int> updateCollectible(Collectible collectible) async {
+    final db = await database;
+    final collectibleWithTimestamp = collectible.copyWith(
+      updatedAt: DateTime.now(),
+    );
+    return await db.update(
+      'collectibles',
+      collectibleWithTimestamp.toMap(),
+      where: 'id = ?',
+      whereArgs: [collectible.id],
+    );
+  }
+
+  /// Update collectible location
+  Future<int> updateCollectibleLocation(int collectibleId, String location) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'location': location, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Update collectible painted status
+  Future<int> updateCollectiblePainted(int collectibleId, bool painted) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'painted': painted ? 1 : 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Update collectible has NFC tag status
+  Future<int> updateCollectibleHasNfcTag(int collectibleId, bool hasNfcTag) async {
+    final db = await database;
+    return await db.update(
+      'collectibles',
+      {'has_nfc_tag': hasNfcTag ? 1 : 0, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [collectibleId],
+    );
+  }
+
+  /// Delete a collectible
+  Future<int> deleteCollectible(int id) async {
+    final db = await database;
+    return await db.delete(
+      'collectibles',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Get count of collectibles
+  Future<int> getCollectibleCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM collectibles');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  /// Get count of collectibles by type
+  Future<int> getCollectibleCountByType(CollectibleType type) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM collectibles WHERE type = ?',
+      [type.value],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<void> close() async {

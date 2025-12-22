@@ -1,6 +1,6 @@
 # Game Keepr
 
-A mobile Flutter application for managing your board game collection with NFC tag support, BoardGameGeek integration, and shelf location tracking.
+A mobile Flutter application for managing your board game collection with NFC tag support, BoardGameGeek integration, shelf location tracking, and collectibles management.
 
 ## About This Project
 
@@ -17,13 +17,13 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **API Token Auth**: Secure authentication using BGG API tokens and password for write operations
 
 ### Collection Management
-- **Multiple Views**:
-  - **Collection**: View your owned games
-  - **All Games**: See all games in your database (owned and wishlist)
-  - **Recently Played**: Quick access to games you've played, sorted by last play date
-  - **Wishlist**: Dedicated view for games you want to add to your collection
-  - **Saved for Later**: Save non-owned games for future consideration (separate from wishlist)
-  - **Scheduled Games**: See all upcoming game sessions in one place
+- **Three Main Tabs**:
+  - **Games**: Manage your board game collection with nested tabs
+    - **Collection**: View your owned games
+    - **Wishlist**: Games you want to add to your collection
+    - **Saved for Later**: Bookmarked games for future consideration
+  - **Collectibles**: Track miniatures, special editions, Kickstarter exclusives, and other game-related items
+  - **More**: Access to secondary features (Recently Played, Scheduled Games, Loaned Games, tools, and settings)
 - **Smart Filtering**: Filter by base games only, expansions only, or show all
 - **Search**: Fast local search across your entire collection with optional filters for categories, mechanics, and tags
 
@@ -40,6 +40,17 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Tag Management**: Centralized screen to rename or delete tags across your entire collection
 - **Usage Tracking**: See how many games each tag is applied to before deleting
 - **Searchable**: Search your collection by tags along with categories and mechanics
+
+### Collectibles Management
+- **Track Anything Game-Related**: Manage miniatures, painted figures, special editions, Kickstarter exclusives, promos, custom components, and more
+- **Multi-Image Support**: Add up to 3 photos per collectible with designated cover image
+- **Game Association**: Link collectibles to games in your collection for easy organization
+- **Full-Screen Image Viewer**: View collectible photos in full-screen with swipe navigation and pinch-to-zoom
+- **Location Tracking**: Track shelf/bay locations for collectibles just like games
+- **NFC Tag Support**: Write and scan NFC tags for quick collectible access
+- **Shelf View Integration**: See collectibles alongside games when viewing a specific shelf location
+- **Search & Filter**: Search collectibles by name with real-time filtering
+- **Backup & Restore**: Collectible images are automatically included in database backups
 
 ### NFC Tag Support
 - **Game Tags**: Write game IDs to NFC tags in your game boxes
@@ -68,14 +79,14 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 ### Game Loan Tracking
 - **Loan Games**: Track which games you've lent out and to whom
 - **Borrower Management**: Free-text borrower names with autocomplete
-- **Active Loans View**: See all currently loaned games in one place (accessible from side menu)
+- **Active Loans View**: See all currently loaned games in one place (accessible from More tab)
 - **Loan History**: View complete loan history for each game including return dates
 - **NFC Loan Recording**: Scan a game tag to quickly create a loan record
 - **Return Tracking**: Mark games as returned with automatic date logging
 
 ### Game Scheduling & Sharing
 - **Schedule Sessions**: Plan future game sessions with date, time, and location
-- **Scheduled Games List**: View all upcoming game sessions in a dedicated screen (accessible from side menu)
+- **Scheduled Games List**: View all upcoming game sessions in a dedicated screen (accessible from More tab)
 - **Edit & Delete**: Modify or cancel scheduled sessions
 - **Share Game Night Invites**: Generate shareable game session invite cards with blue gradient backgrounds
 - **Share Games**: Share any game with a custom card featuring:
@@ -85,9 +96,10 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 
 ### Data Management
 - **Offline First**: Full SQLite database for offline access to your collection
-- **Export Backup**: Create database backups to save to iCloud Drive or Files
-- **Restore Backup**: Restore your collection from a backup file
+- **Export Backup**: Create comprehensive backup archives (ZIP format) containing database + all collectible images
+- **Restore Backup**: Restore your collection and collectible images from a backup file
 - **Image Caching**: Game images cached for offline viewing
+- **Collectible Photos**: All collectible images stored locally and included in backups
 
 ## Screenshots
 
@@ -145,14 +157,17 @@ The app requires NFC and camera capabilities. These are already configured in th
 
 ### Initial Setup
 
-1. Open the app and go to **Settings** (gear icon in the navigation drawer)
-2. Enter your **BoardGameGeek username**
-3. *(Optional)* Enter your **BGG password** to enable two-way sync (ownership changes will sync back to BGG)
-4. Enter your **BGG API token** (obtain from BGG account settings)
-5. Tap **Save Settings**
-6. Return to the home screen and tap the **sync button** to import your collection
+1. Open the app and navigate to the **More** tab
+2. Tap **Settings** from the menu
+3. Enter your **BoardGameGeek username**
+4. *(Optional)* Enter your **BGG password** to enable two-way sync (ownership changes will sync back to BGG)
+5. Enter your **BGG API token** (obtain from BGG account settings)
+6. Tap **Save Settings**
+7. Return to the **Games** tab and tap the **sync button** to import your collection
 
 ### Using NFC Tags
+
+The app features a **floating action button (NFC icon)** accessible from all tabs for quick NFC operations.
 
 #### Writing Game Tags
 1. Open a game's details screen
@@ -161,16 +176,22 @@ The app requires NFC and camera capabilities. These are already configured in th
 4. Wait for the success confirmation
 
 #### Scanning Game Tags
-1. From the home screen, tap the **NFC menu** (NFC icon)
+1. From any tab, tap the **floating NFC button**
 2. Select **Scan Tag**
 3. Hold your iPhone near a tagged game box
-4. The game's details screen will open automatically
+4. The game or collectible details screen will open automatically
 
 #### Recording Plays via NFC
-1. Tap the **NFC menu** and select **Record Play**
+1. Tap the **floating NFC button** and select **Record Play**
 2. Scan a game's NFC tag
 3. Select the date and win/loss status
 4. Save the play record
+
+#### Writing Collectible Tags
+1. Open a collectible's details screen
+2. Tap the **NFC icon** in the app bar
+3. Hold your iPhone near an NFC tag
+4. Wait for the success confirmation
 
 ### Managing Locations
 
@@ -194,8 +215,8 @@ Save games you're interested in but not ready to wishlist or purchase yet. Unlik
 3. The button will change to **"Saved"** with a filled orange bookmark icon
 
 #### Viewing Saved Games
-1. Open the navigation drawer (menu icon)
-2. Tap **Saved for Later**
+1. Navigate to the **Games** tab
+2. Select the **Saved** sub-tab
 3. View all games you've saved
 4. Use the search bar to filter saved games
 5. Tap any game to view full details
@@ -216,7 +237,7 @@ Save games you're interested in but not ready to wishlist or purchase yet. Unlik
 5. Tags are automatically converted to lowercase for consistency
 
 #### Managing Tags
-1. Open the navigation drawer (menu icon)
+1. Navigate to the **More** tab
 2. Tap **Manage Tags**
 3. View all tags with their usage counts
 4. **Rename a tag**: Tap the edit icon to rename across all games
@@ -230,7 +251,7 @@ Save games you're interested in but not ready to wishlist or purchase yet. Unlik
 ### Using Game Recognition (Experimental)
 
 #### Recognizing Games from Photos
-1. Open the navigation drawer (menu icon)
+1. Navigate to the **More** tab
 2. Tap **Recognize Games**
 3. Choose **Take Photo** to capture a new image or **Choose from Gallery** to select an existing photo
 4. Take a clear photo of your game shelf showing the game spines
@@ -271,10 +292,52 @@ Save games you're interested in but not ready to wishlist or purchase yet. Unlik
 3. Tap the **share icon** next to a scheduled session
 4. Share the game night invitation
 
+### Managing Collectibles
+
+Track miniatures, special editions, and other game-related items in the dedicated Collectibles tab.
+
+#### Adding a Collectible
+1. Navigate to the **Collectibles** tab
+2. Tap the **+ (Add Collectible)** floating action button
+3. Enter the collectible name
+4. Optionally select an associated game from your collection
+5. Add up to 3 photos by tapping the camera icons
+6. Designate one photo as the cover image (shown in lists)
+7. Set a shelf location if desired
+8. Tap **Save Collectible**
+
+#### Viewing Collectibles
+1. Navigate to the **Collectibles** tab
+2. Browse all collectibles with cover images
+3. Use the search bar to filter by name
+4. Tap any collectible to view full details
+
+#### Viewing Collectible Images
+1. Open a collectible's details screen
+2. Tap any image to view it full-screen
+3. Swipe left/right to navigate between images
+4. Pinch to zoom in on details
+5. Cover images are marked with a "Cover Photo" badge
+6. Tap the X to exit the image viewer
+
+#### Editing Collectibles
+1. Open a collectible's details screen
+2. Tap the **Edit** button in the app bar
+3. Modify any details (name, associated game, location)
+4. Add or remove photos (up to 3 total)
+5. Change the cover image if desired
+6. Tap **Save Changes**
+
+#### Deleting Collectibles
+1. Open a collectible's details screen
+2. Tap the **Delete** icon in the app bar
+3. Confirm the deletion
+4. All associated photos and data will be permanently removed
+
 ### Viewing Scheduled Games
 
-Access all your upcoming game sessions from the side menu:
-1. Open the navigation drawer (tap the menu icon)
+Access all your upcoming game sessions from the More tab:
+1. Navigate to the **More** tab
 2. Tap **Scheduled Games**
 3. View all scheduled sessions sorted by date
 4. Games scheduled for today are highlighted in orange
@@ -298,9 +361,9 @@ Access all your upcoming game sessions from the side menu:
 
 ```
 lib/
-├── models/           # Data models (Game, Play, ScheduledGame, GameLoan)
+├── models/           # Data models (Game, Play, ScheduledGame, GameLoan, Collectible)
 ├── providers/        # Riverpod providers and state management
-├── screens/          # UI screens (home, game details, manage tags, etc.)
+├── screens/          # UI screens (home, games tab, collectibles, more tab, etc.)
 ├── services/         # Business logic (Database, BGG API, NFC)
 ├── widgets/          # Reusable UI components (location picker, tag widget, etc.)
 └── constants/        # App constants

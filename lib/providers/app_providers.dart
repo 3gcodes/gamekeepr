@@ -10,3 +10,4 @@ export 'recently_played_providers.dart';
 export 'scheduled_games_provider.dart';
 export 'loans_provider.dart';
 export 'ui_state_providers.dart';
+export 'collectibles_provider.dart';

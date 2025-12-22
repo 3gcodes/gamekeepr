@@ -1,0 +1,539 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../models/collectible.dart';
+import '../models/game.dart';
+import '../providers/collectibles_provider.dart';
+import '../providers/games_provider.dart';
+import '../providers/service_providers.dart';
+import '../widgets/location_picker.dart';
+import 'add_collectible_screen.dart';
+import 'game_details_screen.dart';
+
+class CollectibleDetailsScreen extends ConsumerStatefulWidget {
+  final Collectible collectible;
+
+  const CollectibleDetailsScreen({
+    super.key,
+    required this.collectible,
+  });
+
+  @override
+  ConsumerState<CollectibleDetailsScreen> createState() => _CollectibleDetailsScreenState();
+}
+
+class _CollectibleDetailsScreenState extends ConsumerState<CollectibleDetailsScreen> {
+  late Collectible _currentCollectible;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentCollectible = widget.collectible;
+  }
+
+  Future<void> _refreshCollectible() async {
+    if (_currentCollectible.id == null) return;
+    final updated = await ref.read(collectiblesProvider.notifier).getCollectibleById(_currentCollectible.id!);
+    if (updated != null && mounted) {
+      setState(() {
+        _currentCollectible = updated;
+      });
+    }
+  }
+
+  Future<void> _writeNfcTag() async {
+    if (_currentCollectible.id == null) return;
+
+    final nfcService = ref.read(nfcServiceProvider);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Hold your iPhone near the NFC tag...'),
+          ],
+        ),
+      ),
+    );
+
+    final success = await nfcService.writeCollectibleId(_currentCollectible.id!);
+
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Close dialog
+
+    if (success) {
+      await ref.read(collectiblesProvider.notifier).updateCollectibleHasNfcTag(_currentCollectible.id!, true);
+      await _refreshCollectible();
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('NFC tag written successfully!')),
+      );
+    } else {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Failed to write NFC tag')),
+      );
+    }
+  }
+
+  Future<void> _deleteCollectible() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Collectible'),
+        content: Text('Are you sure you want to delete "${_currentCollectible.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && _currentCollectible.id != null) {
+      await ref.read(collectiblesProvider.notifier).deleteCollectible(_currentCollectible.id!);
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final gamesAsync = ref.watch(gamesProvider);
+    Game? associatedGame;
+    if (_currentCollectible.gameId != null) {
+      gamesAsync.whenData((games) {
+        try {
+          associatedGame = games.firstWhere((g) => g.id == _currentCollectible.gameId);
+        } catch (e) {
+          // Game not found
+        }
+      });
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_currentCollectible.name),
+        actions: [
+          if (_currentCollectible.id != null)
+            IconButton(
+              icon: const Icon(Icons.nfc),
+              onPressed: _writeNfcTag,
+              tooltip: 'Write NFC Tag',
+            ),
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddCollectibleScreen(collectible: _currentCollectible),
+                ),
+              );
+              await _refreshCollectible();
+            },
+            tooltip: 'Edit',
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            onPressed: _deleteCollectible,
+            tooltip: 'Delete',
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Images Gallery
+            if (_currentCollectible.hasImages) ...[
+              SizedBox(
+                height: 220,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _currentCollectible.images.length,
+                  itemBuilder: (context, index) {
+                    final isCover = index == _currentCollectible.coverImageIndex;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          _showImageViewer(context, index);
+                        },
+                        child: Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.file(
+                                File(_currentCollectible.images[index]),
+                                width: 200,
+                                height: 200,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Colors.grey[200],
+                                  child: const Icon(Icons.category, size: 64),
+                                ),
+                              ),
+                            ),
+                            if (isCover)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.amber,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.star,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  '${_currentCollectible.images.length} photo${_currentCollectible.images.length > 1 ? 's' : ''}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+              ),
+            ] else
+              Center(
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.category, size: 64, color: Colors.grey),
+                ),
+              ),
+            const SizedBox(height: 24),
+
+            // Type badge
+            _buildInfoSection(
+              'Type',
+              Chip(
+                label: Text(_currentCollectible.typeDisplayName),
+                backgroundColor: Colors.deepPurple[100],
+              ),
+            ),
+
+            // Manufacturer
+            if (_currentCollectible.manufacturer != null)
+              _buildInfoSection('Manufacturer', Text(_currentCollectible.manufacturer!)),
+
+            // Quantity
+            _buildInfoSection('Quantity', Text('${_currentCollectible.quantity}')),
+
+            // Painted status (for miniatures)
+            if (_currentCollectible.type == CollectibleType.MINIATURE)
+              _buildInfoSection(
+                'Painted',
+                SwitchListTile(
+                  value: _currentCollectible.painted,
+                  onChanged: (value) async {
+                    if (_currentCollectible.id != null) {
+                      await ref.read(collectiblesProvider.notifier).updateCollectiblePainted(
+                        _currentCollectible.id!,
+                        value,
+                      );
+                      await _refreshCollectible();
+                    }
+                  },
+                  title: Text(_currentCollectible.painted ? 'Painted' : 'Unpainted'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+
+            // Description
+            if (_currentCollectible.description != null)
+              _buildInfoSection('Description', Text(_currentCollectible.description!)),
+
+            // Associated Game
+            if (associatedGame != null) ...[
+              const Divider(height: 32),
+              const Text(
+                'Associated Game',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: associatedGame!.thumbnailUrl != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: CachedNetworkImage(
+                            imageUrl: associatedGame!.thumbnailUrl!,
+                            width: 50,
+                            height: 50,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : null,
+                  title: Text(associatedGame!.name),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GameDetailsScreen(
+                          game: associatedGame!,
+                          isOwned: associatedGame!.owned,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            // Location
+            const Divider(height: 32),
+            const Text(
+              'Location',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            LocationPicker(
+              initialLocation: _currentCollectible.location,
+              onLocationChanged: (location) async {
+                if (_currentCollectible.id != null && location != null) {
+                  await ref.read(collectiblesProvider.notifier).updateCollectibleLocation(
+                    _currentCollectible.id!,
+                    location,
+                  );
+                  await _refreshCollectible();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Location set to $location')),
+                    );
+                  }
+                }
+              },
+            ),
+
+            // NFC Tag status
+            if (_currentCollectible.hasNfcTag) ...[
+              const SizedBox(height: 16),
+              const Card(
+                color: Colors.green,
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Icon(Icons.nfc, color: Colors.white),
+                      SizedBox(width: 8),
+                      Text(
+                        'NFC Tag Assigned',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showImageViewer(BuildContext context, int initialIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _ImageViewerScreen(
+          images: _currentCollectible.images,
+          initialIndex: initialIndex,
+          coverImageIndex: _currentCollectible.coverImageIndex,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(String title, Widget content) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 4),
+        content,
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+// Full-screen image viewer with swipeable pages
+class _ImageViewerScreen extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+  final int coverImageIndex;
+
+  const _ImageViewerScreen({
+    required this.images,
+    required this.initialIndex,
+    required this.coverImageIndex,
+  });
+
+  @override
+  State<_ImageViewerScreen> createState() => _ImageViewerScreenState();
+}
+
+class _ImageViewerScreenState extends State<_ImageViewerScreen> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: Text(
+          'Photo ${_currentIndex + 1} of ${widget.images.length}',
+          style: const TextStyle(color: Colors.white),
+        ),
+      ),
+      body: Stack(
+        children: [
+          // PageView for swiping between images
+          PageView.builder(
+            controller: _pageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentIndex = index;
+              });
+            },
+            itemCount: widget.images.length,
+            itemBuilder: (context, index) {
+              final isCover = index == widget.coverImageIndex;
+              return Stack(
+                children: [
+                  Center(
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: Image.file(
+                        File(widget.images[index]),
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          color: Colors.grey[900],
+                          child: const Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 64,
+                              color: Colors.white54,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (isCover)
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.amber,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.star, color: Colors.white, size: 16),
+                            SizedBox(width: 4),
+                            Text(
+                              'Cover Photo',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          // Page indicators at the bottom
+          if (widget.images.length > 1)
+            Positioned(
+              bottom: 24,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.images.length,
+                  (index) => Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _currentIndex == index
+                          ? Colors.white
+                          : Colors.white.withOpacity(0.4),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

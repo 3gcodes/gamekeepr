@@ -10,10 +10,13 @@ import '../models/game.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
+import '../models/collectible.dart';
 import '../providers/app_providers.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/loan_game_dialog.dart';
 import '../widgets/game_tags_widget.dart';
+import 'collectible_details_screen.dart';
+import 'add_collectible_screen.dart';
 import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
@@ -39,6 +42,8 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
   bool _isLoadingScheduled = false;
   List<GameLoan> _loans = [];
   bool _isLoadingLoans = false;
+  List<Collectible> _collectibles = [];
+  bool _isLoadingCollectibles = false;
   late TabController _tabController;
 
   @override
@@ -46,7 +51,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     super.initState();
     _detailedGame = widget.game;
     _tabController = TabController(
-      length: 5,
+      length: 6,
       vsync: this,
     );
 
@@ -63,6 +68,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
     // Load loan history for this game
     _loadLoans();
+
+    // Load collectibles for this game
+    _loadCollectibles();
   }
 
   @override
@@ -2374,6 +2382,152 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
     );
   }
 
+  Future<void> _loadCollectibles() async {
+    if (widget.game.id == null) return;
+
+    setState(() {
+      _isLoadingCollectibles = true;
+    });
+
+    try {
+      final db = ref.read(databaseServiceProvider);
+      final collectibles = await db.getCollectiblesForGame(widget.game.id!);
+
+      if (mounted) {
+        setState(() {
+          _collectibles = collectibles;
+          _isLoadingCollectibles = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading collectibles: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingCollectibles = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildCollectiblesTab() {
+    if (_isLoadingCollectibles) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_collectibles.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.category_outlined, size: 64, color: Colors.grey[400]),
+            const SizedBox(height: 16),
+            Text(
+              'No collectibles for this game',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddCollectibleScreen(preselectedGameId: widget.game.id),
+                  ),
+                );
+                _loadCollectibles(); // Refresh after adding
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add Collectible'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${_collectibles.length} collectible${_collectibles.length == 1 ? '' : 's'}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            TextButton.icon(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AddCollectibleScreen(preselectedGameId: widget.game.id),
+                  ),
+                );
+                _loadCollectibles(); // Refresh after adding
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Add'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ..._collectibles.map((collectible) {
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: collectible.imageUrl != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(collectible.imageUrl!),
+                          width: 50,
+                          height: 50,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.category,
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                      )
+                    : Icon(Icons.category, color: Colors.grey[400]),
+              ),
+              title: Text(collectible.name),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(collectible.typeDisplayName),
+                  if (collectible.type == CollectibleType.MINIATURE && collectible.painted)
+                    const Text(
+                      'Painted',
+                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  if (collectible.quantity > 1)
+                    Text('Quantity: ${collectible.quantity}'),
+                ],
+              ),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CollectibleDetailsScreen(collectible: collectible),
+                  ),
+                );
+                _loadCollectibles(); // Refresh after viewing/editing
+              },
+            ),
+          );
+        }).toList(),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _detailedGame ?? widget.game;
@@ -2626,6 +2780,40 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
               ),
               const Tab(icon: Icon(Icons.handshake_outlined)),
               const Tab(icon: Icon(Icons.label_outline)),
+              Tab(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.category_outlined),
+                    if (_collectibles.isNotEmpty)
+                      Positioned(
+                        right: -8,
+                        top: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${_collectibles.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
 
@@ -2639,6 +2827,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 _buildScheduledTab(),
                 _buildLoansTab(),
                 _buildTagsTab(),
+                _buildCollectiblesTab(),
               ],
             ),
           ),

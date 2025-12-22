@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_providers.dart';
+import '../providers/collectibles_provider.dart';
 import 'game_details_screen.dart';
+import 'collectible_details_screen.dart';
 import 'shelf_view_screen.dart';
 
 class NfcScanScreen extends ConsumerStatefulWidget {
@@ -79,13 +81,48 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (_) => GameDetailsScreen(game: game),
+                builder: (_) => GameDetailsScreen(
+                  game: game,
+                  isOwned: game.owned,
+                ),
               ),
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Game with ID $gameId not found in collection'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+            Navigator.pop(context);
+          }
+        }
+      } else if (tagData['type'] == 'collectible') {
+        // Lookup collectible by ID
+        final collectibleId = tagData['data'] as int;
+        final collectible = await ref.read(collectiblesProvider.notifier).getCollectibleById(collectibleId);
+
+        if (mounted) {
+          if (collectible != null) {
+            // Mark collectible as having an NFC tag if not already set
+            if (!collectible.hasNfcTag && collectible.id != null) {
+              final db = ref.read(databaseServiceProvider);
+              await db.updateCollectibleHasNfcTag(collectible.id!, true);
+              // Reload collectibles to reflect the change
+              ref.read(collectiblesProvider.notifier).loadCollectibles();
+            }
+
+            // Navigate directly to collectible details
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CollectibleDetailsScreen(collectible: collectible),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Collectible with ID $collectibleId not found'),
                 backgroundColor: Colors.orange,
               ),
             );
