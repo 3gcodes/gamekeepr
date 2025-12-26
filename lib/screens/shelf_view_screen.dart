@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,6 +6,7 @@ import '../providers/collectibles_provider.dart';
 import '../models/game.dart';
 import '../models/collectible.dart';
 import '../constants/location_constants.dart';
+import '../widgets/collectible_image.dart';
 import 'game_details_screen.dart';
 import 'collectible_details_screen.dart';
 
@@ -436,18 +436,17 @@ class _ShelfCollectibleListItem extends StatelessWidget {
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(collectible.imageUrl!),
+                        child: CollectibleImage(
+                          imagePath: collectible.imageUrl!,
                           width: 60,
                           height: 60,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.category,
-                            color: Colors.grey[400],
-                          ),
                         ),
                       )
-                    : Icon(Icons.category, color: Colors.grey[400]),
+                    : Icon(
+                        Icons.category,
+                        color: Colors.grey[400],
+                      ),
               ),
               const SizedBox(width: 12),
               // Collectible Info

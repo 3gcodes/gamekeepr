@@ -50,6 +50,7 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **NFC Tag Support**: Write and scan NFC tags for quick collectible access
 - **Shelf View Integration**: See collectibles alongside games when viewing a specific shelf location
 - **Search & Filter**: Search collectibles by name with real-time filtering
+- **Cloud Storage (Optional)**: Store collectible images in Amazon S3 for cloud backup and multi-device access
 - **Backup & Restore**: Collectible images are automatically included in database backups
 
 ### NFC Tag Support
@@ -99,7 +100,8 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Export Backup**: Create comprehensive backup archives (ZIP format) containing database + all collectible images
 - **Restore Backup**: Restore your collection and collectible images from a backup file
 - **Image Caching**: Game images cached for offline viewing
-- **Collectible Photos**: All collectible images stored locally and included in backups
+- **Flexible Storage**: Choose between local storage (default) or Amazon S3 for collectible images
+- **S3 Cloud Storage**: Optional integration with Amazon S3 for cloud-based image storage with signed URLs for security
 
 ## Screenshots
 
@@ -334,6 +336,32 @@ Track miniatures, special editions, and other game-related items in the dedicate
 3. Confirm the deletion
 4. All associated photos and data will be permanently removed
 
+### Configuring S3 Cloud Storage (Optional)
+
+Store your collectible images in Amazon S3 for cloud backup and multi-device access.
+
+#### Setting Up S3 Storage
+1. Navigate to the **More** tab
+2. Tap **Settings**
+3. Scroll to the **S3 Storage (Optional)** section
+4. Toggle **Enable S3 Storage** on
+5. Enter your S3 configuration:
+   - **S3 Bucket Name**: Your AWS S3 bucket name
+   - **S3 Region**: AWS region (e.g., us-east-1)
+   - **Access Key ID**: Your AWS access key
+   - **Secret Access Key**: Your AWS secret key
+6. Tap **Save Settings**
+
+#### How S3 Storage Works
+- **New Images**: Automatically uploaded to S3 when you add collectibles
+- **Existing Images**: Remain in local storage; only new images use S3
+- **Security**: All S3 URLs are pre-signed with 7-day expiration
+- **Caching**: S3 images are cached locally for offline viewing
+- **Fallback**: If S3 is disabled, the app reverts to local storage
+- **No Public Access**: S3 bucket does not need public access; signed URLs provide secure access
+
+**Note**: You'll need an AWS account and S3 bucket. Ensure your AWS credentials have permissions to upload to the specified bucket.
+
 ### Viewing Scheduled Games
 
 Access all your upcoming game sessions from the More tab:
@@ -356,6 +384,7 @@ Access all your upcoming game sessions from the More tab:
 - **OCR**: Google ML Kit Text Recognition
 - **Text Matching**: string_similarity for fuzzy matching
 - **Image Capture**: image_picker and camera packages
+- **Cloud Storage**: Amazon S3 with AWS Signature V4 (crypto package)
 
 ### Project Structure
 

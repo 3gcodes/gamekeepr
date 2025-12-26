@@ -15,6 +15,7 @@ import '../providers/app_providers.dart';
 import '../widgets/location_picker.dart';
 import '../widgets/loan_game_dialog.dart';
 import '../widgets/game_tags_widget.dart';
+import '../widgets/collectible_image.dart';
 import 'collectible_details_screen.dart';
 import 'add_collectible_screen.dart';
 import 'package:intl/intl.dart';
@@ -2484,15 +2485,11 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(collectible.imageUrl!),
+                        child: CollectibleImage(
+                          imagePath: collectible.imageUrl!,
                           width: 50,
                           height: 50,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.category,
-                            color: Colors.grey[400],
-                          ),
                         ),
                       )
                     : Icon(Icons.category, color: Colors.grey[400]),

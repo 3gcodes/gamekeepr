@@ -7,6 +7,8 @@ import 'package:path/path.dart' as path;
 import '../models/collectible.dart';
 import '../providers/collectibles_provider.dart';
 import '../providers/games_provider.dart';
+import '../providers/settings_providers.dart';
+import '../services/s3_service.dart';
 
 class AddCollectibleScreen extends ConsumerStatefulWidget {
   final Collectible? collectible; // If provided, we're editing
@@ -88,19 +90,33 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
     }
   }
 
-  Future<String?> _saveImageLocally(File imageFile) async {
+  Future<String?> _saveImage(File imageFile) async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final collectiblesDir = Directory('${appDir.path}/collectibles');
-      if (!await collectiblesDir.exists()) {
-        await collectiblesDir.create(recursive: true);
+      // Check if S3 is enabled
+      final s3Service = await ref.read(s3ServiceProvider.future);
+
+      if (s3Service != null) {
+        // Upload to S3
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = 'collectible_$timestamp${path.extension(imageFile.path)}';
+        final s3Key = 'collectibles/$fileName';
+
+        await s3Service.uploadFile(imageFile, s3Key);
+        return S3Service.createS3Path(s3Key);
+      } else {
+        // Save locally (default behavior)
+        final appDir = await getApplicationDocumentsDirectory();
+        final collectiblesDir = Directory('${appDir.path}/collectibles');
+        if (!await collectiblesDir.exists()) {
+          await collectiblesDir.create(recursive: true);
+        }
+
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileName = 'collectible_$timestamp${path.extension(imageFile.path)}';
+        final savedImage = await imageFile.copy('${collectiblesDir.path}/$fileName');
+
+        return savedImage.path;
       }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final fileName = 'collectible_$timestamp${path.extension(imageFile.path)}';
-      final savedImage = await imageFile.copy('${collectiblesDir.path}/$fileName');
-
-      return savedImage.path;
     } catch (e) {
       print('Error saving image: $e');
       return null;
@@ -183,8 +199,8 @@ class _AddCollectibleScreenState extends ConsumerState<AddCollectibleScreen> {
       final List<String> finalImages = [];
       for (int i = 0; i < 3; i++) {
         if (_selectedImages[i] != null) {
-          // New image selected, save it
-          final savedPath = await _saveImageLocally(_selectedImages[i]!);
+          // New image selected, save it (to S3 or locally depending on settings)
+          final savedPath = await _saveImage(_selectedImages[i]!);
           if (savedPath != null) {
             finalImages.add(savedPath);
           }

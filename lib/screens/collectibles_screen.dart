@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/collectibles_provider.dart';
@@ -6,7 +5,7 @@ import '../providers/games_provider.dart';
 import '../models/collectible.dart';
 import '../models/game.dart';
 import 'collectible_details_screen.dart';
-import 'add_collectible_screen.dart';
+import '../widgets/collectible_image.dart';
 
 class CollectiblesScreen extends ConsumerStatefulWidget {
   const CollectiblesScreen({super.key});
@@ -40,18 +39,6 @@ class _CollectiblesScreenState extends ConsumerState<CollectiblesScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Collectibles'),
-      ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'add_collectible_fab',
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const AddCollectibleScreen(),
-            ),
-          );
-        },
-        child: const Icon(Icons.add),
       ),
       body: GestureDetector(
         onTap: () {
@@ -247,16 +234,11 @@ class _CollectibleListItem extends ConsumerWidget {
                 child: collectible.imageUrl != null
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(collectible.imageUrl!),
+                        child: CollectibleImage(
+                          imagePath: collectible.imageUrl!,
                           width: 60,
                           height: 60,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Icon(
-                            Icons.category,
-                            color: Colors.grey[400],
-                            size: 32,
-                          ),
                         ),
                       )
                     : Icon(

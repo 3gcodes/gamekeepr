@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,6 +7,7 @@ import '../providers/collectibles_provider.dart';
 import '../providers/games_provider.dart';
 import '../providers/service_providers.dart';
 import '../widgets/location_picker.dart';
+import '../widgets/collectible_image.dart';
 import 'add_collectible_screen.dart';
 import 'game_details_screen.dart';
 
@@ -177,17 +177,11 @@ class _CollectibleDetailsScreenState extends ConsumerState<CollectibleDetailsScr
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                File(_currentCollectible.images[index]),
+                              child: CollectibleImage(
+                                imagePath: _currentCollectible.images[index],
                                 width: 200,
                                 height: 200,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Container(
-                                  width: 200,
-                                  height: 200,
-                                  color: Colors.grey[200],
-                                  child: const Icon(Icons.category, size: 64),
-                                ),
                               ),
                             ),
                             if (isCover)
@@ -461,19 +455,9 @@ class _ImageViewerScreenState extends State<_ImageViewerScreen> {
                     child: InteractiveViewer(
                       minScale: 0.5,
                       maxScale: 4.0,
-                      child: Image.file(
-                        File(widget.images[index]),
+                      child: CollectibleImage(
+                        imagePath: widget.images[index],
                         fit: BoxFit.contain,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: Colors.grey[900],
-                          child: const Center(
-                            child: Icon(
-                              Icons.broken_image,
-                              size: 64,
-                              color: Colors.white54,
-                            ),
-                          ),
-                        ),
                       ),
                     ),
                   ),

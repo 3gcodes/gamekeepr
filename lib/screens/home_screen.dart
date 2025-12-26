@@ -8,6 +8,7 @@ import 'nfc_scan_screen.dart';
 import 'nfc_record_play_screen.dart';
 import 'nfc_loan_game_screen.dart';
 import 'write_shelf_tag_screen.dart';
+import 'add_collectible_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -46,21 +47,34 @@ class HomeScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        heroTag: 'nfc_fab',
-        onPressed: () => _showNfcMenu(context),
-        tooltip: 'NFC Actions',
-        child: const Icon(Icons.nfc),
+        heroTag: 'main_fab',
+        onPressed: () => _showActionMenu(context),
+        tooltip: 'Actions',
+        child: const Icon(Icons.menu),
       ),
     );
   }
 
-  void _showNfcMenu(BuildContext context) {
+  void _showActionMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.add_circle, color: Colors.blue),
+              title: const Text('Add Collectible'),
+              subtitle: const Text('Create a new collectible'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddCollectibleScreen()),
+                );
+              },
+            ),
+            const Divider(),
             ListTile(
               leading: const Icon(Icons.nfc),
               title: const Text('Scan Tag'),

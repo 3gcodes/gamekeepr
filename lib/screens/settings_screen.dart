@@ -18,9 +18,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late TextEditingController _usernameController;
   late TextEditingController _apiTokenController;
   late TextEditingController _passwordController;
+  late TextEditingController _s3BucketController;
+  late TextEditingController _s3RegionController;
+  late TextEditingController _s3AccessKeyController;
+  late TextEditingController _s3SecretKeyController;
   bool _isSaving = false;
   bool _obscureToken = true;
   bool _obscurePassword = true;
+  bool _obscureS3AccessKey = true;
+  bool _obscureS3SecretKey = true;
+  bool _s3Enabled = false;
   final _secureStorage = const FlutterSecureStorage();
 
   @override
@@ -30,6 +37,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _usernameController = TextEditingController();
     _apiTokenController = TextEditingController();
     _passwordController = TextEditingController();
+    _s3BucketController = TextEditingController();
+    _s3RegionController = TextEditingController();
+    _s3AccessKeyController = TextEditingController();
+    _s3SecretKeyController = TextEditingController();
     _loadCredentials();
   }
 
@@ -39,9 +50,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final apiToken = prefs.getString('bgg_api_token') ?? '';
     final password = await _secureStorage.read(key: 'bgg_password') ?? '';
 
+    // Load S3 settings
+    final s3Enabled = prefs.getBool('s3_enabled') ?? false;
+    final s3Bucket = prefs.getString('s3_bucket') ?? '';
+    final s3Region = prefs.getString('s3_region') ?? 'us-east-1';
+    final s3AccessKey = await _secureStorage.read(key: 's3_access_key') ?? '';
+    final s3SecretKey = await _secureStorage.read(key: 's3_secret_key') ?? '';
+
     _usernameController.text = username;
     _apiTokenController.text = apiToken;
     _passwordController.text = password;
+    _s3BucketController.text = s3Bucket;
+    _s3RegionController.text = s3Region;
+    _s3AccessKeyController.text = s3AccessKey;
+    _s3SecretKeyController.text = s3SecretKey;
+    _s3Enabled = s3Enabled;
 
     if (mounted) {
       setState(() {});
@@ -53,6 +76,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _usernameController.dispose();
     _apiTokenController.dispose();
     _passwordController.dispose();
+    _s3BucketController.dispose();
+    _s3RegionController.dispose();
+    _s3AccessKeyController.dispose();
+    _s3SecretKeyController.dispose();
     super.dispose();
   }
 
@@ -74,6 +101,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await _secureStorage.write(
         key: 'bgg_password',
         value: password,
+      );
+
+      // Save S3 settings
+      final s3Bucket = _s3BucketController.text.trim();
+      final s3Region = _s3RegionController.text.trim();
+      final s3AccessKey = _s3AccessKeyController.text.trim();
+      final s3SecretKey = _s3SecretKeyController.text.trim();
+
+      await prefs.setBool('s3_enabled', _s3Enabled);
+      await prefs.setString('s3_bucket', s3Bucket);
+      await prefs.setString('s3_region', s3Region);
+
+      // Save S3 keys to secure storage
+      await _secureStorage.write(
+        key: 's3_access_key',
+        value: s3AccessKey,
+      );
+      await _secureStorage.write(
+        key: 's3_secret_key',
+        value: s3SecretKey,
       );
 
       // Update provider
@@ -401,6 +448,110 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     label: Text(_isSaving ? 'Saving...' : 'Save Settings'),
                   ),
                 ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 8),
+
+          // S3 Storage Section
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'S3 Storage (Optional)',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('Enable S3 Storage'),
+                  subtitle: const Text('Store collectible images in Amazon S3'),
+                  value: _s3Enabled,
+                  onChanged: (value) {
+                    setState(() {
+                      _s3Enabled = value;
+                    });
+                  },
+                  contentPadding: EdgeInsets.zero,
+                ),
+                if (_s3Enabled) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _s3BucketController,
+                    decoration: InputDecoration(
+                      labelText: 'S3 Bucket Name',
+                      hintText: 'my-bucket-name',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: const Icon(Icons.cloud),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _s3RegionController,
+                    decoration: InputDecoration(
+                      labelText: 'S3 Region',
+                      hintText: 'us-east-1',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: const Icon(Icons.public),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _s3AccessKeyController,
+                    obscureText: _obscureS3AccessKey,
+                    decoration: InputDecoration(
+                      labelText: 'Access Key ID',
+                      hintText: 'Enter your AWS access key',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: const Icon(Icons.vpn_key),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureS3AccessKey ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureS3AccessKey = !_obscureS3AccessKey;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _s3SecretKeyController,
+                    obscureText: _obscureS3SecretKey,
+                    decoration: InputDecoration(
+                      labelText: 'Secret Access Key',
+                      hintText: 'Enter your AWS secret key',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureS3SecretKey ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureS3SecretKey = !_obscureS3SecretKey;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
