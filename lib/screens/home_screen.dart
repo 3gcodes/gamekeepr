@@ -9,6 +9,7 @@ import 'nfc_record_play_screen.dart';
 import 'nfc_loan_game_screen.dart';
 import 'write_shelf_tag_screen.dart';
 import 'add_collectible_screen.dart';
+import 'barcode_scanner_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -120,6 +121,19 @@ class HomeScreen extends ConsumerWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const WriteShelfTagScreen()),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.qr_code_scanner, color: Colors.green),
+              title: const Text('Scan Barcode'),
+              subtitle: const Text('Find games by UPC/EAN barcode'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
                 );
               },
             ),

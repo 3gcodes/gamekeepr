@@ -34,6 +34,7 @@ dependencies:
   flutter_cache_manager: ^3.3.1
   image_picker: ^1.0.7
   camera: ^0.10.5+9
+  mobile_scanner: ^5.2.3
 
   # ML & Text Recognition
   google_mlkit_text_recognition: ^0.13.0

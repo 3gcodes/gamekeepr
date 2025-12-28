@@ -13,6 +13,7 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Ownership Sync**: Automatically sync ownership status changes back to BGG when you add or remove games
 - **Play History Sync**: Import play history from BGG for each game (synced plays are marked as read-only)
 - **BGG Search**: Search the entire BGG database to add games not in your collection
+- **Barcode Scanner**: Scan UPC/EAN barcodes to quickly find games - automatically searches your library first, then BGG
 - **Game Details**: View comprehensive game information including description, categories, mechanics, and expansions
 - **API Token Auth**: Secure authentication using BGG API tokens and password for write operations
 
@@ -278,6 +279,31 @@ Save games you're interested in but not ready to wishlist or purchase yet. Unlik
 - Hold the camera parallel to the shelf for clearer text
 - Recognition works best with clear, printed text
 
+### Using Barcode Scanner
+
+Quickly find games by scanning their UPC/EAN barcodes.
+
+#### Scanning a Barcode
+1. From any tab, tap the **floating action button** (menu icon)
+2. Select **Scan Barcode** from the menu
+3. Point your camera at a board game's barcode (typically on the back of the box)
+4. The app will automatically:
+   - Look up the barcode in the UPCitemdb database
+   - Check if the game exists in your local library
+   - If found locally: Open the game details screen
+   - If not found: Automatically search BoardGameGeek and show results
+
+**How It Works:**
+- Uses UPCitemdb.com free tier (100 scans per day)
+- Supports standard UPC and EAN barcodes
+- No manual typing needed - just point and scan
+- Seamless integration with existing BGG search
+
+**Tips:**
+- Ensure good lighting for accurate barcode reading
+- Hold the camera steady and keep the barcode within the frame
+- Works with most retail board game barcodes
+
 ### Sharing Games
 
 #### Share a Game
@@ -384,6 +410,7 @@ Access all your upcoming game sessions from the More tab:
 - **OCR**: Google ML Kit Text Recognition
 - **Text Matching**: string_similarity for fuzzy matching
 - **Image Capture**: image_picker and camera packages
+- **Barcode Scanning**: mobile_scanner with UPCitemdb.com API integration
 - **Cloud Storage**: Amazon S3 with AWS Signature V4 (crypto package)
 
 ### Project Structure
