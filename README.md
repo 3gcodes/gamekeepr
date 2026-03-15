@@ -60,6 +60,11 @@ This application was entirely written by **Claude** (Anthropic's AI assistant), 
 - **Record Play via NFC**: Scan a game tag to quickly record a play session
 - **Shelf Navigation**: Scan shelf tags to view all games in that location
 
+### Deep Link Support
+- **Custom URL Scheme**: `gamekeepr://game/{bggId}` opens game details directly
+- **iOS Shortcuts Integration**: Combine with NFC scanning in Shortcuts to open games from outside the app
+- **Cold & Warm Start**: Works whether the app is already running or needs to launch
+
 ### Game Recognition (Experimental)
 - **Photo Recognition**: Take a photo of your game shelf to identify games by their spines
 - **OCR Technology**: Uses Google ML Kit to extract text from game spine images
@@ -195,6 +200,52 @@ The app features a **floating action button (NFC icon)** accessible from all tab
 2. Tap the **NFC icon** in the app bar
 3. Hold your iPhone near an NFC tag
 4. Wait for the success confirmation
+
+### BGG Play History Sync
+
+Sync your play history from BoardGameGeek to keep your local records up to date.
+
+#### How It Works
+1. Navigate to a game's details screen
+2. Tap the **Plays** tab
+3. Tap the **cloud sync icon** to pull play history from BGG
+4. Synced plays appear with a **cloud icon** to distinguish them from manually recorded plays
+
+#### Key Details
+- **Read-Only**: Plays imported from BGG cannot be edited or deleted locally
+- **Incremental Sync**: Only new plays are imported; existing synced plays are not duplicated
+- **Per-Game Sync**: Play history is synced individually for each game
+- **Requires BGG Credentials**: Your BGG username must be configured in Settings
+
+### Deep Links (iOS Shortcuts Integration)
+
+Open game details directly from outside the app using the `gamekeepr://` URL scheme. This is especially useful with **iOS Shortcuts** to trigger game lookups via NFC without opening the app first.
+
+#### URL Format
+
+```
+gamekeepr://game/{bggId}
+```
+
+For example, `gamekeepr://game/34556` opens the details for the game with BGG ID 34556.
+
+#### Setting Up an iOS Shortcut for NFC
+
+Create a Shortcut automation that scans an NFC tag and opens the game in Game Keepr:
+
+1. Open the **Shortcuts** app
+2. Create a new Shortcut with these actions:
+   - **Read NFC** — scans the tag
+   - **Get Text from Input** — extracts the raw text payload
+   - **Match Text** — use the regex `\d+` to extract just the numeric BGG ID
+   - **Get Item from List** — select **First Item** from the matches
+   - **Open URL** — open `gamekeepr://game/{Match}` (insert the matched text)
+3. Run the Shortcut and scan a tagged game box
+
+#### Behavior
+- If the game is found in your local collection, its details screen opens
+- If the game is not found, a message is shown: "Game with BGG ID {id} not found in collection"
+- Works for both cold start (app not running) and warm resume (app in background)
 
 ### Managing Locations
 
@@ -411,6 +462,7 @@ Access all your upcoming game sessions from the More tab:
 - **Text Matching**: string_similarity for fuzzy matching
 - **Image Capture**: image_picker and camera packages
 - **Barcode Scanning**: mobile_scanner with UPCitemdb.com API integration
+- **Deep Links**: app_links package with custom URL scheme
 - **Cloud Storage**: Amazon S3 with AWS Signature V4 (crypto package)
 
 ### Project Structure
