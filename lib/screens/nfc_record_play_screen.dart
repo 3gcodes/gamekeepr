@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
-import '../models/play.dart';
+import 'record_play_screen.dart';
 import 'game_details_screen.dart';
 
 class NfcRecordPlayScreen extends ConsumerStatefulWidget {
@@ -65,63 +64,37 @@ class _NfcRecordPlayScreenState extends ConsumerState<NfcRecordPlayScreen> {
             ref.read(gamesProvider.notifier).loadGames();
           }
 
-          // Ask if they won
-          final won = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              title: const Text('Did you win?'),
-              content: Text('${game.name}\n${DateFormat('MMM d, yyyy').format(DateTime.now())}'),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('No'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Yes'),
-                ),
-              ],
-            ),
-          );
-
-          if (won == null) {
-            // User cancelled - go back
-            if (mounted) Navigator.pop(context);
-            return;
-          }
-
-          // Record the play with today's date
-          final play = Play(
-            gameId: game.id!,
-            datePlayed: DateTime.now(),
-            won: won,
-          );
-
-          await db.insertPlay(play);
-
-          // Reload recently played games list
-          ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
-
+          // Navigate to RecordPlayScreen for full play recording
           if (mounted) {
-            final formattedDate = DateFormat('MMM d, yyyy').format(DateTime.now());
-            final wonText = won ? ' - Won!' : ' - Lost';
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Play recorded for ${game.name} on $formattedDate$wonText'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-
-            // Navigate to game details
-            Navigator.pushReplacement(
+            final result = await Navigator.push<bool>(
               context,
               MaterialPageRoute(
-                builder: (_) => GameDetailsScreen(game: game),
+                builder: (_) => RecordPlayScreen(game: game),
               ),
             );
+
+            if (mounted) {
+              if (result == true) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Play recorded for ${game.name}'),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+
+                // Navigate to game details
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GameDetailsScreen(game: game),
+                  ),
+                );
+              } else {
+                // User cancelled - go back
+                Navigator.pop(context);
+              }
+            }
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(

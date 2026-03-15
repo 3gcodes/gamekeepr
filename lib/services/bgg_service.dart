@@ -717,6 +717,218 @@ class BggService {
     return games.first;
   }
 
+  /// Log a play to BGG via the geekplay.php endpoint
+  /// Returns the BGG play ID if available in the response
+  /// [bggId] - the BGG object ID for the game
+  /// [playdate] - date the game was played
+  /// [location] - where the game was played (optional)
+  /// [players] - list of player maps with keys: name, username, userid, win
+  Future<int?> logPlay({
+    required int bggId,
+    required DateTime playdate,
+    String? location,
+    List<Map<String, dynamic>> players = const [],
+  }) async {
+    if (!_isLoggedIn) {
+      throw Exception('Must be logged in to log plays. Please check your BGG password in settings.');
+    }
+
+    try {
+      final dateStr = '${playdate.year}-${playdate.month.toString().padLeft(2, '0')}-${playdate.day.toString().padLeft(2, '0')}';
+      final isoDate = '${dateStr}T05:00:00.000Z';
+
+      // Build player payload matching BGG's expected format
+      final bggPlayers = players.map((p) {
+        final playerMap = <String, dynamic>{
+          'name': p['name'] ?? '',
+          'username': p['username'] ?? '',
+          'userid': p['userid'] ?? 0,
+          'selected': false,
+        };
+        if (p['win'] == true) {
+          playerMap['win'] = true;
+        }
+        return playerMap;
+      }).toList();
+
+      final payload = {
+        'ajax': 1,
+        'action': 'save',
+        'objecttype': 'thing',
+        'objectid': bggId.toString(),
+        'playdate': dateStr,
+        'date': isoDate,
+        'location': location ?? '',
+        'locationfilter': '',
+        'quantity': 1,
+        'length': 0,
+        'twitter': false,
+        'bsky': false,
+        'players': bggPlayers,
+      };
+
+      print('🎲 Logging play to BGG for game $bggId on $dateStr');
+
+      final response = await _webDio.post(
+        '/geekplay.php',
+        data: payload,
+        options: Options(
+          contentType: Headers.jsonContentType,
+          headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+
+      print('📡 LogPlay Response Status: ${response.statusCode}');
+      print('📡 LogPlay Response Body: ${response.data}');
+
+      if (response.statusCode == 200) {
+        print('✅ Successfully logged play to BGG');
+
+        // Try to extract play ID from response
+        final data = response.data;
+        if (data is Map && data.containsKey('playid')) {
+          final playId = int.tryParse(data['playid'].toString());
+          if (playId != null) {
+            print('🎲 BGG Play ID: $playId');
+            return playId;
+          }
+        }
+        // Also check if the response is HTML containing a play ID
+        if (data is String) {
+          final match = RegExp(r'playid["\s:=]+(\d+)').firstMatch(data);
+          if (match != null) {
+            final playId = int.tryParse(match.group(1)!);
+            if (playId != null) {
+              print('🎲 BGG Play ID (from HTML): $playId');
+              return playId;
+            }
+          }
+        }
+        return null;
+      } else {
+        print('⚠️ BGG logPlay returned status ${response.statusCode}: ${response.data}');
+        throw Exception('Failed to log play to BGG (status ${response.statusCode})');
+      }
+    } catch (e) {
+      print('❌ Error logging play to BGG: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing play on BGG via the geekplay.php endpoint
+  /// Uses form-encoded data with bracket notation for players
+  Future<void> updatePlay({
+    required int bggPlayId,
+    required int bggId,
+    required DateTime playdate,
+    String? location,
+    List<Map<String, dynamic>> players = const [],
+  }) async {
+    if (!_isLoggedIn) {
+      throw Exception('Must be logged in to update plays. Please check your BGG password in settings.');
+    }
+
+    try {
+      final dateStr = '${playdate.year}-${playdate.month.toString().padLeft(2, '0')}-${playdate.day.toString().padLeft(2, '0')}';
+
+      // Build form data with flattened player bracket notation
+      final formFields = <String, dynamic>{
+        'version': '2',
+        'objecttype': 'thing',
+        'objectid': bggId.toString(),
+        'playid': bggPlayId.toString(),
+        'action': 'save',
+        'playdate': dateStr,
+        'dateinput': dateStr,
+        'location': location ?? '',
+        'quantity': '1',
+        'length': '0',
+        'comments': '',
+      };
+
+      // Add players with bracket notation: players[0][name], players[0][win], etc.
+      for (var i = 0; i < players.length; i++) {
+        final p = players[i];
+        formFields['players[$i][name]'] = p['name'] ?? '';
+        formFields['players[$i][username]'] = p['username'] ?? '';
+        formFields['players[$i][color]'] = '';
+        formFields['players[$i][position]'] = '';
+        formFields['players[$i][score]'] = '';
+        formFields['players[$i][rating]'] = '0';
+        if (p['win'] == true) {
+          formFields['players[$i][win]'] = '1';
+        }
+      }
+
+      formFields['B1'] = 'Save All';
+
+      print('🎲 Updating play $bggPlayId on BGG for game $bggId');
+
+      final response = await _webDio.post(
+        '/geekplay.php',
+        data: formFields,
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+
+      print('📡 UpdatePlay Response Status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        print('✅ Successfully updated play on BGG');
+      } else {
+        print('⚠️ BGG updatePlay returned status ${response.statusCode}: ${response.data}');
+        throw Exception('Failed to update play on BGG (status ${response.statusCode})');
+      }
+    } catch (e) {
+      print('❌ Error updating play on BGG: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete a play from BGG via the geekplay.php endpoint
+  Future<void> deletePlay(int bggPlayId) async {
+    if (!_isLoggedIn) {
+      throw Exception('Must be logged in to delete plays. Please check your BGG password in settings.');
+    }
+
+    try {
+      final payload = {
+        'playid': bggPlayId.toString(),
+        'ajax': 1,
+        'finalize': 1,
+        'action': 'delete',
+      };
+
+      print('🗑️ Deleting play $bggPlayId from BGG');
+
+      final response = await _webDio.post(
+        '/geekplay.php',
+        data: payload,
+        options: Options(
+          contentType: Headers.jsonContentType,
+          headers: _sessionCookie != null ? {'Cookie': _sessionCookie} : null,
+          validateStatus: (status) => status! < 500,
+        ),
+      );
+
+      print('📡 DeletePlay Response Status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        print('✅ Successfully deleted play from BGG');
+      } else {
+        print('⚠️ BGG deletePlay returned status ${response.statusCode}: ${response.data}');
+        throw Exception('Failed to delete play from BGG (status ${response.statusCode})');
+      }
+    } catch (e) {
+      print('❌ Error deleting play from BGG: $e');
+      rethrow;
+    }
+  }
+
   /// Fetch play data for a game from BGG
   /// Returns a list of play dates with win/loss information
   Future<List<Map<String, dynamic>>> fetchPlaysForGame(String username, int bggId) async {
@@ -768,6 +980,10 @@ class BggService {
 
         final datePlayed = DateTime.parse(dateStr);
 
+        // Extract BGG play ID
+        final bggPlayIdStr = playElement.getAttribute('id');
+        final bggPlayId = bggPlayIdStr != null ? int.tryParse(bggPlayIdStr) : null;
+
         // Check for win/loss in players section
         bool? won;
         final playersElement = playElement.findElements('players').firstOrNull;
@@ -789,6 +1005,7 @@ class BggService {
         plays.add({
           'datePlayed': datePlayed,
           'won': won,
+          'bggPlayId': bggPlayId,
         });
       } catch (e) {
         print('Error parsing play: $e');

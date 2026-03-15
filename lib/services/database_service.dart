@@ -10,6 +10,8 @@ import '../models/game_loan.dart';
 import '../models/game_with_loan_info.dart';
 import '../models/game_with_play_info.dart';
 import '../models/collectible.dart';
+import '../models/player.dart';
+import '../models/play_with_players.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
@@ -29,7 +31,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 15,
+      version: 17,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -82,6 +84,8 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         won INTEGER,
         synced_from_bgg INTEGER NOT NULL DEFAULT 0,
+        location TEXT,
+        bgg_play_id INTEGER,
         FOREIGN KEY (game_id) REFERENCES games (id) ON DELETE CASCADE
       )
     ''');
@@ -94,6 +98,41 @@ class DatabaseService {
     // Create index on date_played for sorting
     await db.execute('''
       CREATE INDEX idx_plays_date ON plays(date_played)
+    ''');
+
+    // Create players table
+    await db.execute('''
+      CREATE TABLE players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        bgg_username TEXT,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_player_name ON players(name)
+    ''');
+
+    // Create play_players junction table
+    await db.execute('''
+      CREATE TABLE play_players (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        play_id INTEGER NOT NULL,
+        player_id INTEGER NOT NULL,
+        winner INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (play_id) REFERENCES plays (id) ON DELETE CASCADE,
+        FOREIGN KEY (player_id) REFERENCES players (id) ON DELETE CASCADE,
+        UNIQUE(play_id, player_id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_play_players_play_id ON play_players(play_id)
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_play_players_player_id ON play_players(player_id)
     ''');
 
     // Create scheduled_games table
@@ -410,6 +449,55 @@ class DatabaseService {
         }
       }
     }
+
+    if (oldVersion < 16) {
+      // Add location column to plays table
+      await db.execute('''
+        ALTER TABLE plays ADD COLUMN location TEXT
+      ''');
+
+      // Create players table
+      await db.execute('''
+        CREATE TABLE players (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          bgg_username TEXT,
+          created_at TEXT NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_player_name ON players(name)
+      ''');
+
+      // Create play_players junction table
+      await db.execute('''
+        CREATE TABLE play_players (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          play_id INTEGER NOT NULL,
+          player_id INTEGER NOT NULL,
+          winner INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (play_id) REFERENCES plays (id) ON DELETE CASCADE,
+          FOREIGN KEY (player_id) REFERENCES players (id) ON DELETE CASCADE,
+          UNIQUE(play_id, player_id)
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_play_players_play_id ON play_players(play_id)
+      ''');
+
+      await db.execute('''
+        CREATE INDEX idx_play_players_player_id ON play_players(player_id)
+      ''');
+    }
+
+    if (oldVersion < 17) {
+      // Add bgg_play_id column to plays table
+      await db.execute('''
+        ALTER TABLE plays ADD COLUMN bgg_play_id INTEGER
+      ''');
+    }
   }
 
   Future<Game> insertGame(Game game) async {
@@ -708,6 +796,17 @@ class DatabaseService {
       play.toMap(),
       where: 'id = ?',
       whereArgs: [play.id],
+    );
+  }
+
+  /// Update the BGG play ID on a play record
+  Future<void> updatePlayBggId(int playId, int bggPlayId) async {
+    final db = await database;
+    await db.update(
+      'plays',
+      {'bgg_play_id': bggPlayId},
+      where: 'id = ?',
+      whereArgs: [playId],
     );
   }
 
@@ -1252,6 +1351,157 @@ class DatabaseService {
       [type.value],
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  // ==================== Players Methods ====================
+
+  /// Insert a new player
+  Future<Player> insertPlayer(Player player) async {
+    final db = await database;
+    final id = await db.insert(
+      'players',
+      player.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return player.copyWith(id: id);
+  }
+
+  /// Get all players
+  Future<List<Player>> getAllPlayers() async {
+    final db = await database;
+    final maps = await db.query('players', orderBy: 'name ASC');
+    return maps.map((map) => Player.fromMap(map)).toList();
+  }
+
+  /// Get a player by ID
+  Future<Player?> getPlayerById(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'players',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return Player.fromMap(maps.first);
+  }
+
+  /// Update a player
+  Future<void> updatePlayer(Player player) async {
+    final db = await database;
+    await db.update(
+      'players',
+      player.toMap(),
+      where: 'id = ?',
+      whereArgs: [player.id],
+    );
+  }
+
+  /// Delete a player
+  Future<void> deletePlayer(int playerId) async {
+    final db = await database;
+    await db.delete(
+      'players',
+      where: 'id = ?',
+      whereArgs: [playerId],
+    );
+  }
+
+  // ==================== Play-Players Methods ====================
+
+  /// Add a player to a play
+  Future<void> addPlayerToPlay(int playId, int playerId, {bool winner = false}) async {
+    final db = await database;
+    await db.insert(
+      'play_players',
+      {
+        'play_id': playId,
+        'player_id': playerId,
+        'winner': winner ? 1 : 0,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Remove all players from a play
+  Future<void> removeAllPlayersFromPlay(int playId) async {
+    final db = await database;
+    await db.delete(
+      'play_players',
+      where: 'play_id = ?',
+      whereArgs: [playId],
+    );
+  }
+
+  /// Set the players for a play (replaces existing)
+  Future<void> setPlayPlayers(int playId, List<int> playerIds, List<int> winnerPlayerIds) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // Remove existing play-player associations
+      await txn.delete(
+        'play_players',
+        where: 'play_id = ?',
+        whereArgs: [playId],
+      );
+
+      // Insert new associations
+      for (final playerId in playerIds) {
+        await txn.insert('play_players', {
+          'play_id': playId,
+          'player_id': playerId,
+          'winner': winnerPlayerIds.contains(playerId) ? 1 : 0,
+        });
+      }
+    });
+  }
+
+  /// Get plays with player information for a specific game
+  Future<List<PlayWithPlayers>> getPlaysWithPlayersForGame(int gameId) async {
+    final db = await database;
+
+    // Get all plays for this game
+    final playMaps = await db.query(
+      'plays',
+      where: 'game_id = ?',
+      whereArgs: [gameId],
+      orderBy: 'date_played DESC',
+    );
+
+    final result = <PlayWithPlayers>[];
+
+    for (final playMap in playMaps) {
+      final play = Play.fromMap(playMap);
+
+      // Get players for this play via JOIN
+      final playerMaps = await db.rawQuery('''
+        SELECT p.*, pp.winner
+        FROM players p
+        INNER JOIN play_players pp ON p.id = pp.player_id
+        WHERE pp.play_id = ?
+        ORDER BY p.name ASC
+      ''', [play.id]);
+
+      final players = playerMaps.map((map) {
+        final player = Player.fromMap(map);
+        final winner = (map['winner'] as int?) == 1;
+        return PlayerWithWinStatus(player: player, winner: winner);
+      }).toList();
+
+      result.add(PlayWithPlayers(play: play, players: players));
+    }
+
+    return result;
+  }
+
+  /// Get all distinct play locations for autocomplete
+  Future<List<String>> getAllPlayLocations() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT DISTINCT location
+      FROM plays
+      WHERE location IS NOT NULL AND location != ''
+      ORDER BY location ASC
+    ''');
+    return result.map((row) => row['location'] as String).toList();
   }
 
   Future<void> close() async {
