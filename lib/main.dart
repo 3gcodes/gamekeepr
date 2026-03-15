@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens/home_screen.dart';
+import 'services/deep_link_service.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
   runApp(
@@ -10,12 +13,33 @@ void main() {
   );
 }
 
-class GameKeeprApp extends StatelessWidget {
+class GameKeeprApp extends StatefulWidget {
   const GameKeeprApp({super.key});
+
+  @override
+  State<GameKeeprApp> createState() => _GameKeeprAppState();
+}
+
+class _GameKeeprAppState extends State<GameKeeprApp> {
+  late final DeepLinkService _deepLinkService;
+
+  @override
+  void initState() {
+    super.initState();
+    _deepLinkService = DeepLinkService(navigatorKey: navigatorKey);
+    _deepLinkService.init();
+  }
+
+  @override
+  void dispose() {
+    _deepLinkService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Game Keepr',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(

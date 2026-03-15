@@ -40,6 +40,9 @@ dependencies:
   google_mlkit_text_recognition: ^0.13.0
   string_similarity: ^2.0.0
 
+  # Deep Links
+  app_links: ^6.3.2
+
   # Utils
   shared_preferences: ^2.2.2
   intl: ^0.18.1
