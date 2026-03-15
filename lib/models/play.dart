@@ -5,6 +5,8 @@ class Play {
   final DateTime createdAt;
   final bool? won;
   final bool syncedFromBgg;
+  final String? location;
+  final int? bggPlayId;
 
   Play({
     this.id,
@@ -13,6 +15,8 @@ class Play {
     DateTime? createdAt,
     this.won,
     this.syncedFromBgg = false,
+    this.location,
+    this.bggPlayId,
   }) : createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toMap() {
@@ -23,6 +27,8 @@ class Play {
       'created_at': createdAt.toIso8601String(),
       'won': won == null ? null : (won! ? 1 : 0),
       'synced_from_bgg': syncedFromBgg ? 1 : 0,
+      'location': location,
+      'bgg_play_id': bggPlayId,
     };
   }
 
@@ -34,6 +40,8 @@ class Play {
       createdAt: DateTime.parse(map['created_at'] as String),
       won: map['won'] == null ? null : (map['won'] as int) == 1,
       syncedFromBgg: (map['synced_from_bgg'] as int?) == 1,
+      location: map['location'] as String?,
+      bggPlayId: map['bgg_play_id'] as int?,
     );
   }
 
@@ -44,6 +52,8 @@ class Play {
     DateTime? createdAt,
     bool? won,
     bool? syncedFromBgg,
+    String? location,
+    int? bggPlayId,
   }) {
     return Play(
       id: id ?? this.id,
@@ -52,6 +62,8 @@ class Play {
       createdAt: createdAt ?? this.createdAt,
       won: won ?? this.won,
       syncedFromBgg: syncedFromBgg ?? this.syncedFromBgg,
+      location: location ?? this.location,
+      bggPlayId: bggPlayId ?? this.bggPlayId,
     );
   }
 }

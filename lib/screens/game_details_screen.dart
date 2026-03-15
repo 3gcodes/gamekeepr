@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
 import '../models/game.dart';
 import '../models/play.dart';
+import '../models/play_with_players.dart';
 import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
 import '../models/collectible.dart';
@@ -18,6 +19,8 @@ import '../widgets/game_tags_widget.dart';
 import '../widgets/collectible_image.dart';
 import 'collectible_details_screen.dart';
 import 'add_collectible_screen.dart';
+import 'record_play_screen.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 
 class GameDetailsScreen extends ConsumerStatefulWidget {
@@ -37,7 +40,7 @@ class GameDetailsScreen extends ConsumerStatefulWidget {
 class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with SingleTickerProviderStateMixin {
   Game? _detailedGame;
   bool _isLoadingDetails = false;
-  List<Play> _plays = [];
+  List<PlayWithPlayers> _playsWithPlayers = [];
   bool _isLoadingPlays = false;
   List<ScheduledGame> _scheduledGames = [];
   bool _isLoadingScheduled = false;
@@ -1134,32 +1137,42 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             // Get existing plays to avoid duplicates
             final existingPlays = await db.getPlaysForGame(widget.game.id!);
 
-            // Convert existing plays to a set of date strings for quick lookup
-            final existingPlayDates = existingPlays
-                .map((p) => p.datePlayed.toIso8601String().substring(0, 10))
-                .toSet();
+            // Build a map of existing plays by date for quick lookup
+            final existingPlaysByDate = <String, Play>{};
+            for (final p in existingPlays) {
+              final dateKey = p.datePlayed.toIso8601String().substring(0, 10);
+              existingPlaysByDate[dateKey] = p;
+            }
 
-            // Add plays from BGG that don't exist locally
+            // Add new plays and backfill bgg_play_id on existing ones
             int addedCount = 0;
+            int backfilledCount = 0;
             for (final bggPlay in bggPlays) {
               final playDate = (bggPlay['datePlayed'] as DateTime)
                   .toIso8601String()
                   .substring(0, 10);
+              final bggPlayId = bggPlay['bggPlayId'] as int?;
 
-              if (!existingPlayDates.contains(playDate)) {
+              final existingPlay = existingPlaysByDate[playDate];
+              if (existingPlay == null) {
                 final play = Play(
                   gameId: widget.game.id!,
                   datePlayed: bggPlay['datePlayed'] as DateTime,
                   won: bggPlay['won'] as bool?,
                   syncedFromBgg: true,
+                  bggPlayId: bggPlayId,
                 );
                 await db.insertPlay(play);
                 addedCount++;
+              } else if (existingPlay.bggPlayId == null && bggPlayId != null && existingPlay.id != null) {
+                // Backfill missing bgg_play_id on existing plays
+                await db.updatePlayBggId(existingPlay.id!, bggPlayId);
+                backfilledCount++;
               }
             }
 
-            if (addedCount > 0) {
-              print('✅ Added $addedCount plays from BGG');
+            if (addedCount > 0 || backfilledCount > 0) {
+              print('✅ Added $addedCount plays from BGG, backfilled $backfilledCount play IDs');
               // Reload plays to show the new data
               await _loadPlays();
             } else {
@@ -1206,11 +1219,11 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
     try {
       final db = ref.read(databaseServiceProvider);
-      final plays = await db.getPlaysForGame(widget.game.id!);
+      final playsWithPlayers = await db.getPlaysWithPlayersForGame(widget.game.id!);
 
       if (mounted) {
         setState(() {
-          _plays = plays;
+          _playsWithPlayers = playsWithPlayers;
           _isLoadingPlays = false;
         });
       }
@@ -1268,201 +1281,53 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       return;
     }
 
-    // Show date picker
-    final selectedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecordPlayScreen(game: widget.game),
+      ),
     );
 
-    if (selectedDate == null) return;
-    if (!mounted) return;
-
-    // Show won dialog
-    bool wonValue = false;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Record Play'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    DateFormat('EEEE, MMMM d, yyyy').format(selectedDate),
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 16),
-                  CheckboxListTile(
-                    value: wonValue,
-                    onChanged: (value) {
-                      setState(() {
-                        wonValue = value ?? false;
-                      });
-                    },
-                    title: const Text('Won'),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final db = ref.read(databaseServiceProvider);
-      final play = Play(
-        gameId: widget.game.id!,
-        datePlayed: selectedDate,
-        won: wonValue,
-      );
-
-      await db.insertPlay(play);
-
-      // Reload plays
+    if (result == true) {
       await _loadPlays();
-
-      // Reload recently played games list
-      ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
-
       if (mounted) {
-        final wonText = wonValue ? ' - Won!' : ' - Lost';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Play recorded for ${DateFormat('MMM d, yyyy').format(selectedDate)}$wonText'),
+          const SnackBar(
+            content: Text('Play recorded'),
             backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error recording play: $e'),
-            backgroundColor: Colors.red,
           ),
         );
       }
     }
   }
 
-  Future<void> _editPlay(Play play) async {
-    // Show date picker with initial date
-    final selectedDate = await showDatePicker(
-      context: context,
-      initialDate: play.datePlayed,
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
+  Future<void> _editPlay(PlayWithPlayers playWithPlayers) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RecordPlayScreen(
+          game: widget.game,
+          existingPlay: playWithPlayers,
+        ),
+      ),
     );
 
-    if (selectedDate == null) return;
-    if (!mounted) return;
-
-    // Show won dialog with initial value
-    bool wonValue = play.won ?? false;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Edit Play'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    DateFormat('EEEE, MMMM d, yyyy').format(selectedDate),
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 16),
-                  CheckboxListTile(
-                    value: wonValue,
-                    onChanged: (value) {
-                      setState(() {
-                        wonValue = value ?? false;
-                      });
-                    },
-                    title: const Text('Won'),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (confirmed != true) return;
-
-    try {
-      final db = ref.read(databaseServiceProvider);
-      final updatedPlay = play.copyWith(
-        datePlayed: selectedDate,
-        won: wonValue,
-      );
-
-      await db.updatePlay(updatedPlay);
-
-      // Reload plays
+    if (result == true) {
       await _loadPlays();
-
       // Reload recently played games list
       ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
-
       if (mounted) {
-        final wonText = wonValue ? ' - Won!' : ' - Lost';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Play updated for ${DateFormat('MMM d, yyyy').format(selectedDate)}$wonText'),
+          const SnackBar(
+            content: Text('Play updated'),
             backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error updating play: $e'),
-            backgroundColor: Colors.red,
           ),
         );
       }
     }
   }
 
-  Future<void> _deletePlay(int playId) async {
+  Future<void> _deletePlay(Play play) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1482,34 +1347,86 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       ),
     );
 
-    if (confirmed == true) {
-      try {
-        final db = ref.read(databaseServiceProvider);
-        await db.deletePlay(playId);
+    if (confirmed != true) return;
 
-        // Reload plays
-        await _loadPlays();
+    try {
+      final db = ref.read(databaseServiceProvider);
+      await db.deletePlay(play.id!);
 
-        // Reload recently played games list
-        ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+      // If the play has a BGG play ID, offer to delete from BGG too
+      if (play.bggPlayId != null && mounted) {
+        final deleteBgg = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete from BGG?'),
+            content: const Text('Also delete this play from BoardGameGeek?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('No'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: const Text('Yes, delete from BGG'),
+              ),
+            ],
+          ),
+        );
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Play deleted'),
-              backgroundColor: Colors.green,
-            ),
-          );
+        if (deleteBgg == true) {
+          try {
+            final bggService = ref.read(bggServiceProvider);
+
+            if (!bggService.isLoggedIn) {
+              final prefs = await ref.read(sharedPreferencesProvider.future);
+              final username = prefs.getString('bgg_username') ?? '';
+              final secureStorage = const FlutterSecureStorage();
+              final password = await secureStorage.read(key: 'bgg_password') ?? '';
+              if (username.isNotEmpty && password.isNotEmpty) {
+                await bggService.login(username, password);
+              }
+            }
+
+            if (bggService.isLoggedIn) {
+              await bggService.deletePlay(play.bggPlayId!);
+            }
+          } catch (e) {
+            print('⚠️ Failed to delete play from BGG: $e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Play deleted locally, but failed to delete from BGG: $e'),
+                  backgroundColor: Colors.orange,
+                ),
+              );
+            }
+          }
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error deleting play: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      }
+
+      // Reload plays
+      await _loadPlays();
+
+      // Reload recently played games list
+      ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Play deleted'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting play: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -1806,7 +1723,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
           // Play History List
           if (_isLoadingPlays)
             const Center(child: CircularProgressIndicator())
-          else if (_plays.isEmpty)
+          else if (_playsWithPlayers.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Center(
@@ -1821,89 +1738,142 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             )
           else
             Column(
-              children: _plays.map((play) {
+              children: _playsWithPlayers.map((pwp) {
+                final play = pwp.play;
+                final isBggSynced = play.syncedFromBgg;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
-                  child: ListTile(
-                    isThreeLine: play.syncedFromBgg,
-                    leading: play.won == null
-                        ? const Icon(Icons.event, color: Colors.blue)
-                        : play.won!
-                            ? const Icon(Icons.emoji_events, color: Colors.amber)
-                            : const Icon(Icons.event, color: Colors.grey),
-                    title: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
-                            style: const TextStyle(fontWeight: FontWeight.w500),
-                          ),
-                        ),
-                        if (play.won != null)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: play.won! ? Colors.green[100] : Colors.red[100],
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              play.won! ? 'Won' : 'Lost',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: play.won! ? Colors.green[800] : Colors.red[800],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    subtitle: Column(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Recorded ${DateFormat('MMM d, yyyy').format(play.createdAt)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        if (play.syncedFromBgg)
-                          const SizedBox(height: 4),
-                        if (play.syncedFromBgg)
-                          Row(
-                            children: [
-                              Icon(Icons.cloud_download, size: 12, color: Colors.blue[700]),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Synced from BGG',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.blue[700],
-                                  fontStyle: FontStyle.italic,
+                        // Date row with Won/Lost badge and actions
+                        Row(
+                          children: [
+                            isBggSynced
+                                ? (play.won == null
+                                    ? const Icon(Icons.event, color: Colors.blue, size: 20)
+                                    : play.won!
+                                        ? const Icon(Icons.emoji_events, color: Colors.amber, size: 20)
+                                        : const Icon(Icons.event, color: Colors.grey, size: 20))
+                                : (pwp.winners.isNotEmpty
+                                    ? const Icon(Icons.emoji_events, color: Colors.amber, size: 20)
+                                    : const Icon(Icons.event, color: Colors.blue, size: 20)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                DateFormat('EEEE, MMMM d, yyyy').format(play.datePlayed),
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            // BGG-synced plays show Won/Lost badge
+                            if (isBggSynced && play.won != null)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: play.won! ? Colors.green[100] : Colors.red[100],
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  play.won! ? 'Won' : 'Lost',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: play.won! ? Colors.green[800] : Colors.red[800],
+                                  ),
                                 ),
                               ),
+                            if (isBggSynced)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8),
+                                child: Icon(Icons.lock_outline, size: 18, color: Colors.grey[400]),
+                              ),
+                            if (!isBggSynced) ...[
+                              IconButton(
+                                icon: const Icon(Icons.edit, color: Colors.blue, size: 20),
+                                onPressed: () => _editPlay(pwp),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                                onPressed: () => _deletePlay(play),
+                                visualDensity: VisualDensity.compact,
+                              ),
                             ],
+                          ],
+                        ),
+
+                        // Location row
+                        if (play.location != null && play.location!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 28),
+                            child: Row(
+                              children: [
+                                Icon(Icons.location_on_outlined, size: 14, color: Colors.grey[600]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  play.location!,
+                                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        // Players row
+                        if (pwp.players.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 28),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: pwp.players.map((pws) {
+                                return Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (pws.winner)
+                                      const Icon(Icons.emoji_events, size: 14, color: Colors.amber)
+                                    else
+                                      Icon(Icons.person_outline, size: 14, color: Colors.grey[600]),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      pws.player.name,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: pws.winner ? Colors.amber[800] : Colors.grey[600],
+                                        fontWeight: pws.winner ? FontWeight.bold : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }).toList(),
+                            ),
+                          ),
+
+                        // BGG synced indicator
+                        if (isBggSynced)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4, left: 28),
+                            child: Row(
+                              children: [
+                                Icon(Icons.cloud_download, size: 12, color: Colors.blue[700]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Synced from BGG',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue[700],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                       ],
                     ),
-                    trailing: play.syncedFromBgg
-                        ? Icon(Icons.lock_outline, color: Colors.grey[400])
-                        : Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.blue),
-                                onPressed: () => _editPlay(play),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _deletePlay(play.id!),
-                              ),
-                            ],
-                          ),
                   ),
                 );
               }).toList(),
@@ -2712,7 +2682,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                   clipBehavior: Clip.none,
                   children: [
                     const Icon(Icons.history),
-                    if (_plays.isNotEmpty)
+                    if (_playsWithPlayers.isNotEmpty)
                       Positioned(
                         right: -8,
                         top: -4,
@@ -2728,7 +2698,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                           ),
                           child: Center(
                             child: Text(
-                              '${_plays.length}',
+                              '${_playsWithPlayers.length}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,
