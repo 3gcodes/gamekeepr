@@ -4,10 +4,12 @@ import 'player.dart';
 class PlayerWithWinStatus {
   final Player player;
   final bool winner;
+  final String? score;
 
   PlayerWithWinStatus({
     required this.player,
     this.winner = false,
+    this.score,
   });
 }
 

@@ -1840,7 +1840,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
                                       Icon(Icons.person_outline, size: 14, color: Colors.grey[600]),
                                     const SizedBox(width: 2),
                                     Text(
-                                      pws.player.name,
+                                      pws.score != null && pws.score!.isNotEmpty
+                                          ? '${pws.player.name}: ${pws.score}'
+                                          : pws.player.name,
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: pws.winner ? Colors.amber[800] : Colors.grey[600],

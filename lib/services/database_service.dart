@@ -31,7 +31,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 17,
+      version: 18,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -121,6 +121,7 @@ class DatabaseService {
         play_id INTEGER NOT NULL,
         player_id INTEGER NOT NULL,
         winner INTEGER NOT NULL DEFAULT 0,
+        score TEXT,
         FOREIGN KEY (play_id) REFERENCES plays (id) ON DELETE CASCADE,
         FOREIGN KEY (player_id) REFERENCES players (id) ON DELETE CASCADE,
         UNIQUE(play_id, player_id)
@@ -496,6 +497,13 @@ class DatabaseService {
       // Add bgg_play_id column to plays table
       await db.execute('''
         ALTER TABLE plays ADD COLUMN bgg_play_id INTEGER
+      ''');
+    }
+
+    if (oldVersion < 18) {
+      // Add score column to play_players table
+      await db.execute('''
+        ALTER TABLE play_players ADD COLUMN score TEXT
       ''');
     }
   }
@@ -1409,7 +1417,7 @@ class DatabaseService {
   // ==================== Play-Players Methods ====================
 
   /// Add a player to a play
-  Future<void> addPlayerToPlay(int playId, int playerId, {bool winner = false}) async {
+  Future<void> addPlayerToPlay(int playId, int playerId, {bool winner = false, String? score}) async {
     final db = await database;
     await db.insert(
       'play_players',
@@ -1417,6 +1425,7 @@ class DatabaseService {
         'play_id': playId,
         'player_id': playerId,
         'winner': winner ? 1 : 0,
+        'score': score,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
@@ -1433,7 +1442,7 @@ class DatabaseService {
   }
 
   /// Set the players for a play (replaces existing)
-  Future<void> setPlayPlayers(int playId, List<int> playerIds, List<int> winnerPlayerIds) async {
+  Future<void> setPlayPlayers(int playId, List<int> playerIds, List<int> winnerPlayerIds, {Map<int, String> playerScores = const {}}) async {
     final db = await database;
     await db.transaction((txn) async {
       // Remove existing play-player associations
@@ -1445,10 +1454,12 @@ class DatabaseService {
 
       // Insert new associations
       for (final playerId in playerIds) {
+        final score = playerScores[playerId];
         await txn.insert('play_players', {
           'play_id': playId,
           'player_id': playerId,
           'winner': winnerPlayerIds.contains(playerId) ? 1 : 0,
+          'score': score,
         });
       }
     });
@@ -1473,7 +1484,7 @@ class DatabaseService {
 
       // Get players for this play via JOIN
       final playerMaps = await db.rawQuery('''
-        SELECT p.*, pp.winner
+        SELECT p.*, pp.winner, pp.score
         FROM players p
         INNER JOIN play_players pp ON p.id = pp.player_id
         WHERE pp.play_id = ?
@@ -1483,7 +1494,8 @@ class DatabaseService {
       final players = playerMaps.map((map) {
         final player = Player.fromMap(map);
         final winner = (map['winner'] as int?) == 1;
-        return PlayerWithWinStatus(player: player, winner: winner);
+        final score = map['score'] as String?;
+        return PlayerWithWinStatus(player: player, winner: winner, score: score);
       }).toList();
 
       result.add(PlayWithPlayers(play: play, players: players));
