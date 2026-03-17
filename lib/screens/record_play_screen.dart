@@ -40,7 +40,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
       _selectedDate = existing.play.datePlayed;
       _locationController.text = existing.play.location ?? '';
       _selectedPlayers = existing.players.map((pws) {
-        return _SelectedPlayer(player: pws.player, winner: pws.winner);
+        return _SelectedPlayer(player: pws.player, winner: pws.winner, score: pws.score);
       }).toList();
     } else {
       _selectedDate = DateTime.now();
@@ -51,6 +51,9 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
   @override
   void dispose() {
     _locationController.dispose();
+    for (final sp in _selectedPlayers) {
+      sp.dispose();
+    }
     super.dispose();
   }
 
@@ -85,6 +88,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
   }
 
   void _removePlayer(int index) {
+    _selectedPlayers[index].dispose();
     setState(() {
       _selectedPlayers.removeAt(index);
     });
@@ -126,6 +130,12 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
                 }
               }
               // Remove deselected players
+              final toRemove = _selectedPlayers
+                  .where((sp) => !players.any((p) => p.id == sp.player.id))
+                  .toList();
+              for (final sp in toRemove) {
+                sp.dispose();
+              }
               _selectedPlayers.removeWhere(
                 (sp) => !players.any((p) => p.id == sp.player.id),
               );
@@ -171,7 +181,14 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
               .where((sp) => sp.winner && sp.player.id != null)
               .map((sp) => sp.player.id!)
               .toList();
-          await db.setPlayPlayers(updatedPlay.id!, playerIds, winnerIds);
+          final playerScores = <int, String>{};
+          for (final sp in _selectedPlayers) {
+            final scoreText = sp.scoreController.text.trim();
+            if (sp.player.id != null && scoreText.isNotEmpty) {
+              playerScores[sp.player.id!] = scoreText;
+            }
+          }
+          await db.setPlayPlayers(updatedPlay.id!, playerIds, winnerIds, playerScores: playerScores);
         }
 
         // Sync edit to BGG if we have a BGG play ID
@@ -197,7 +214,14 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
               .where((sp) => sp.winner && sp.player.id != null)
               .map((sp) => sp.player.id!)
               .toList();
-          await db.setPlayPlayers(savedPlay.id!, playerIds, winnerIds);
+          final playerScores = <int, String>{};
+          for (final sp in _selectedPlayers) {
+            final scoreText = sp.scoreController.text.trim();
+            if (sp.player.id != null && scoreText.isNotEmpty) {
+              playerScores[sp.player.id!] = scoreText;
+            }
+          }
+          await db.setPlayPlayers(savedPlay.id!, playerIds, winnerIds, playerScores: playerScores);
         }
 
         // Sync play to BGG (best-effort, don't fail local save)
@@ -250,6 +274,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
           'name': sp.player.name,
           'username': sp.player.bggUsername ?? '',
           'win': sp.winner,
+          'score': sp.scoreController.text.trim(),
         };
       }).toList();
 
@@ -291,6 +316,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
           'username': sp.player.bggUsername ?? '',
           'userid': 0,
           'win': sp.winner,
+          'score': sp.scoreController.text.trim(),
         };
       }).toList();
 
@@ -446,41 +472,65 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
                 ),
               )
             else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: List.generate(_selectedPlayers.length, (index) {
-                  final sp = _selectedPlayers[index];
-                  return InputChip(
-                    avatar: sp.winner
-                        ? const Icon(Icons.emoji_events, size: 18, color: Colors.amber)
-                        : const Icon(Icons.person, size: 18),
-                    label: Text(sp.player.name),
-                    backgroundColor: sp.winner ? Colors.amber[50] : null,
-                    side: sp.winner
-                        ? BorderSide(color: Colors.amber[300]!)
-                        : null,
-                    onPressed: () => _toggleWinner(index),
-                    onDeleted: () => _removePlayer(index),
-                    tooltip: sp.winner
-                        ? 'Tap to unmark as winner'
-                        : 'Tap to mark as winner',
-                  );
-                }),
-              ),
-
-            if (_selectedPlayers.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Tap a player chip to toggle winner status',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    fontStyle: FontStyle.italic,
+              ...List.generate(_selectedPlayers.length, (index) {
+                final sp = _selectedPlayers[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      // Winner toggle
+                      IconButton(
+                        icon: Icon(
+                          Icons.emoji_events,
+                          color: sp.winner ? Colors.amber : Colors.grey[400],
+                          size: 22,
+                        ),
+                        onPressed: () => _toggleWinner(index),
+                        tooltip: sp.winner
+                            ? 'Tap to unmark as winner'
+                            : 'Tap to mark as winner',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      // Player name
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          sp.player.name,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: sp.winner ? FontWeight.bold : FontWeight.normal,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Score field
+                      Expanded(
+                        flex: 2,
+                        child: TextField(
+                          controller: sp.scoreController,
+                          decoration: InputDecoration(
+                            hintText: 'Score',
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          keyboardType: TextInputType.text,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                      ),
+                      // Delete button
+                      IconButton(
+                        icon: Icon(Icons.close, size: 18, color: Colors.grey[600]),
+                        onPressed: () => _removePlayer(index),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
                   ),
-                ),
-              ),
+                );
+              }),
 
             const SizedBox(height: 32),
 
@@ -515,12 +565,19 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
   }
 }
 
-// Internal mutable holder for selected player + winner state
+// Internal mutable holder for selected player + winner + score state
 class _SelectedPlayer {
   final Player player;
   bool winner;
+  String? score;
+  final TextEditingController scoreController;
 
-  _SelectedPlayer({required this.player, this.winner = false});
+  _SelectedPlayer({required this.player, this.winner = false, this.score})
+      : scoreController = TextEditingController(text: score ?? '');
+
+  void dispose() {
+    scoreController.dispose();
+  }
 }
 
 // Bottom sheet for adding players

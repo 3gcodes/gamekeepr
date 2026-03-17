@@ -748,6 +748,10 @@ class BggService {
         if (p['win'] == true) {
           playerMap['win'] = true;
         }
+        final score = p['score'];
+        if (score != null && score.toString().isNotEmpty) {
+          playerMap['score'] = score;
+        }
         return playerMap;
       }).toList();
 
@@ -854,7 +858,7 @@ class BggService {
         formFields['players[$i][username]'] = p['username'] ?? '';
         formFields['players[$i][color]'] = '';
         formFields['players[$i][position]'] = '';
-        formFields['players[$i][score]'] = '';
+        formFields['players[$i][score]'] = p['score'] ?? '';
         formFields['players[$i][rating]'] = '0';
         if (p['win'] == true) {
           formFields['players[$i][win]'] = '1';
