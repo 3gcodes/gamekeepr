@@ -10,6 +10,7 @@ import 'nfc_loan_game_screen.dart';
 import 'write_shelf_tag_screen.dart';
 import 'add_collectible_screen.dart';
 import 'barcode_scanner_screen.dart';
+import 'start_player_screen.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -59,85 +60,106 @@ class HomeScreen extends ConsumerWidget {
   void _showActionMenu(BuildContext context) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add_circle, color: Colors.blue),
-              title: const Text('Add Collectible'),
-              subtitle: const Text('Create a new collectible'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AddCollectibleScreen()),
-                );
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.nfc),
-              title: const Text('Scan Tag'),
-              subtitle: const Text('Read an NFC tag'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NfcScanScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.event_available),
-              title: const Text('Record Play'),
-              subtitle: const Text('Log a game session via NFC'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NfcRecordPlayScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.handshake),
-              title: const Text('Loan Game'),
-              subtitle: const Text('Lend a game via NFC'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const NfcLoanGameScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('Write Shelf Tag'),
-              subtitle: const Text('Program an NFC tag for a shelf'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const WriteShelfTagScreen()),
-                );
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.qr_code_scanner, color: Colors.green),
-              title: const Text('Scan Barcode'),
-              subtitle: const Text('Find games by UPC/EAN barcode'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
-                );
-              },
-            ),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.add_circle, color: Colors.blue),
+                title: const Text('Add Collectible'),
+                subtitle: const Text('Create a new collectible'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AddCollectibleScreen()),
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.nfc),
+                title: const Text('Scan Tag'),
+                subtitle: const Text('Read an NFC tag'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NfcScanScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.event_available),
+                title: const Text('Record Play'),
+                subtitle: const Text('Log a game session via NFC'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NfcRecordPlayScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.handshake),
+                title: const Text('Loan Game'),
+                subtitle: const Text('Lend a game via NFC'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const NfcLoanGameScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Write Shelf Tag'),
+                subtitle: const Text('Program an NFC tag for a shelf'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const WriteShelfTagScreen()),
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.qr_code_scanner, color: Colors.green),
+                title: const Text('Scan Barcode'),
+                subtitle: const Text('Find games by UPC/EAN barcode'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()),
+                  );
+                },
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.touch_app, color: Colors.deepPurple),
+                title: const Text('Start Player'),
+                subtitle: const Text('Randomly choose who goes first'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    // Fullscreen dialog so the iOS back swipe can't steal a
+                    // finger held near the left edge
+                    MaterialPageRoute(
+                      fullscreenDialog: true,
+                      builder: (_) => const StartPlayerScreen(),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

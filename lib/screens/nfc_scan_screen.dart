@@ -82,7 +82,7 @@ class _NfcScanScreenState extends ConsumerState<NfcScanScreen> {
               context,
               MaterialPageRoute(
                 builder: (_) => GameDetailsScreen(
-                  game: game,
+                  game: game.copyWith(hasNfcTag: true),
                   isOwned: game.owned,
                 ),
               ),

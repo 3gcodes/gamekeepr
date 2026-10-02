@@ -13,6 +13,9 @@ class BggService {
   // Cloudflare answers a spoofed browser UA on /xmlapi2 with a 403 challenge.
   static const String _apiUserAgent = 'GameKeepr/1.0';
 
+  // BGG limits how many IDs a single thing request can carry
+  static const int _detailsBatchSize = 20;
+
   // Store bearer token for API v2 authenticated requests
   String? _bearerToken;
 
@@ -380,6 +383,16 @@ class BggService {
       return _fetchGameDetails(gameIds, retryCount: retryCount + 1);
     }
 
+    if (response.statusCode == 429) {
+      // Rate limited, wait and retry
+      if (retryCount >= 10) {
+        throw Exception('BGG is rate limiting requests. Please try again later.');
+      }
+      print('⏳ Rate limited, waiting 5 seconds before retry...');
+      await Future.delayed(const Duration(seconds: 5));
+      return _fetchGameDetails(gameIds, retryCount: retryCount + 1);
+    }
+
     if (response.statusCode == 401) {
       throw Exception('Invalid API token. Please check your settings.');
     }
@@ -719,6 +732,23 @@ class BggService {
       throw Exception('Game not found with ID: $bggId');
     }
     return games.first;
+  }
+
+  /// Fetch detailed information for many games by BGG ID
+  /// Yields the games one batch at a time, pausing between requests to stay
+  /// within BGG's rate limits
+  Stream<List<Game>> fetchGamesDetails(List<int> bggIds) async* {
+    if (!hasToken) {
+      throw Exception('Please set your BGG API token in settings');
+    }
+
+    for (var start = 0; start < bggIds.length; start += _detailsBatchSize) {
+      if (start > 0) {
+        await Future.delayed(const Duration(seconds: 1));
+      }
+      final batch = bggIds.skip(start).take(_detailsBatchSize);
+      yield await _fetchGameDetails(batch.map((id) => id.toString()).toList());
+    }
   }
 
   /// Log a play to BGG via the geekplay.php endpoint

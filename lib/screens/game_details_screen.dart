@@ -1114,18 +1114,23 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
       final detailedGame = await bggService.fetchGameDetails(widget.game.bggId);
 
-      // Preserve the database ID, location, and ownership status
-      final updatedGame = detailedGame.copyWith(
-        id: widget.game.id,
-        location: widget.game.location,
-        owned: widget.game.owned,
-        wishlisted: widget.game.wishlisted,
-        savedForLater: widget.game.savedForLater,
-        hasNfcTag: widget.game.hasNfcTag,
-      );
+      // Merge the details into the game as it is stored right now, so local
+      // data (location, ownership, NFC tag, market value) is preserved even if
+      // it changed after this screen was opened
+      final db = ref.read(databaseServiceProvider);
+      final storedGame = widget.game.id != null
+          ? await db.getGameById(widget.game.id!)
+          : null;
+      final updatedGame = (storedGame ?? _detailedGame ?? widget.game)
+          .withDetails(detailedGame)
+          .copyWith(
+            name: detailedGame.name,
+            imageUrl: detailedGame.imageUrl,
+            thumbnailUrl: detailedGame.thumbnailUrl,
+            yearPublished: detailedGame.yearPublished,
+          );
 
       // Update database
-      final db = ref.read(databaseServiceProvider);
       await db.updateGame(updatedGame);
 
       // Sync plays from BGG if we have a username

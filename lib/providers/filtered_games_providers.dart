@@ -7,31 +7,28 @@ import 'search_providers.dart';
 final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
   final games = ref.watch(gamesProvider);
   final query = ref.watch(searchQueryProvider);
-  final expansionFilter = ref.watch(expansionFilterProvider);
   final searchCategories = ref.watch(searchCategoriesProvider);
   final searchMechanics = ref.watch(searchMechanicsProvider);
   final searchTags = ref.watch(searchTagsProvider);
   final tagsMapAsync = ref.watch(gameTagsMapProvider);
+  final maxPlayersFilter = ref.watch(maxPlayersFilterProvider);
+  final categoryFilter = ref.watch(categoryFilterProvider);
+  final mechanicFilter = ref.watch(mechanicFilterProvider);
 
   return games.when(
     data: (gamesList) {
       // First, filter to only show owned games in collection
       var filtered = gamesList.where((game) => game.owned).toList();
 
-      // Apply expansion filter
-      switch (expansionFilter) {
-        case ExpansionFilter.baseGames:
-          // Show only games that are NOT expansions (baseGame is null)
-          filtered = filtered.where((game) => game.baseGame == null).toList();
-          break;
-        case ExpansionFilter.onlyExpansions:
-          // Show only expansions (games with a baseGame)
-          filtered = filtered.where((game) => game.baseGame != null).toList();
-          break;
-        case ExpansionFilter.all:
-          // No filtering
-          break;
-      }
+      // Apply player count, category and mechanic filters
+      filtered = filtered
+          .where((game) => gameMatchesFilters(
+                game,
+                maxPlayersFilter,
+                categoryFilter,
+                mechanicFilter,
+              ))
+          .toList();
 
       // Apply search filter
       if (query.isNotEmpty) {
@@ -53,6 +50,26 @@ final filteredGamesProvider = Provider<AsyncValue<List<Game>>>((ref) {
     loading: () => const AsyncValue.loading(),
     error: (error, stack) => AsyncValue.error(error, stack),
   );
+});
+
+// Categories found on owned games (options for the category filter)
+final collectionCategoriesProvider = Provider<List<String>>((ref) {
+  final games = ref.watch(gamesProvider).valueOrNull ?? [];
+  final categories = <String>{
+    for (final game in games)
+      if (game.owned) ...?game.categories,
+  };
+  return categories.toList()..sort();
+});
+
+// Mechanics found on owned games (options for the mechanic filter)
+final collectionMechanicsProvider = Provider<List<String>>((ref) {
+  final games = ref.watch(gamesProvider).valueOrNull ?? [];
+  final mechanics = <String>{
+    for (final game in games)
+      if (game.owned) ...?game.mechanics,
+  };
+  return mechanics.toList()..sort();
 });
 
 // All Games Provider (all games - owned and not owned)

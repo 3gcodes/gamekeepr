@@ -6,6 +6,7 @@ import '../models/game.dart';
 import 'game_details_screen.dart';
 import 'bgg_search_screen.dart';
 import '../widgets/recently_played_view.dart';
+import '../widgets/filter_bottom_sheet.dart';
 
 class GamesTabScreen extends ConsumerStatefulWidget {
   const GamesTabScreen({super.key});
@@ -95,9 +96,23 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
     }
   }
 
+  void _showFilterBottomSheet() {
+    FocusScope.of(context).unfocus();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => const FilterBottomSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final syncStatus = ref.watch(syncStatusProvider);
+    final subTabIndex = ref.watch(gamesSubTabIndexProvider);
+    final activeFilterCount = ref.watch(activeFilterCountProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -146,27 +161,46 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
             // Search field
             Padding(
               padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                controller: _searchController,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) {
-                  FocusScope.of(context).unfocus();
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search games...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                          },
-                        )
-                      : null,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) {
+                        FocusScope.of(context).unfocus();
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Search games...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  // Filter button - filters only apply to the Collection tab
+                  if (subTabIndex == 0) ...[
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Badge(
+                        isLabelVisible: activeFilterCount > 0,
+                        label: Text('$activeFilterCount'),
+                        child: const Icon(Icons.filter_list),
+                      ),
+                      onPressed: _showFilterBottomSheet,
+                      tooltip: 'Filter',
+                    ),
+                  ],
+                ],
               ),
             ),
             // TabBarView
@@ -188,6 +222,7 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
 
   Widget _buildCollectionView() {
     final filteredGames = ref.watch(filteredGamesProvider);
+    final hasActiveFilters = ref.watch(activeFilterCountProvider) > 0;
 
     return filteredGames.when(
       data: (games) {
@@ -203,15 +238,17 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _searchController.text.isEmpty
-                      ? 'No games in collection'
-                      : 'No games found',
+                  _searchController.text.isNotEmpty
+                      ? 'No games found'
+                      : hasActiveFilters
+                          ? 'No games match your filters'
+                          : 'No games in collection',
                   style: TextStyle(
                     fontSize: 18,
                     color: Colors.grey[600],
                   ),
                 ),
-                if (_searchController.text.isEmpty) ...[
+                if (_searchController.text.isEmpty && !hasActiveFilters) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Tap the sync button to load your collection',
@@ -220,7 +257,9 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
                       color: Colors.grey[500],
                     ),
                   ),
-                ] else ...[
+                ],
+                // BGG search only uses the search text, never the filters
+                if (_searchController.text.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: () {
@@ -235,6 +274,13 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
                     },
                     icon: const Icon(Icons.search),
                     label: const Text('Search BGG'),
+                  ),
+                ],
+                if (hasActiveFilters) ...[
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => resetCollectionFilters(ref),
+                    child: const Text('Clear Filters'),
                   ),
                 ],
               ],

@@ -223,6 +223,25 @@ class Game {
     );
   }
 
+  /// Returns this game with the BGG detail fields taken from [details],
+  /// keeping everything stored locally (location, owned status, NFC tag,
+  /// market value, ...)
+  Game withDetails(Game details) {
+    return copyWith(
+      description: details.description,
+      minPlayers: details.minPlayers,
+      maxPlayers: details.maxPlayers,
+      minPlaytime: details.minPlaytime,
+      maxPlaytime: details.maxPlaytime,
+      averageRating: details.averageRating,
+      categories: details.categories,
+      mechanics: details.mechanics,
+      baseGame: details.baseGame,
+      expansions: details.expansions,
+      lastSynced: details.lastSynced,
+    );
+  }
+
   String get playersInfo {
     if (minPlayers == null && maxPlayers == null) return 'Unknown';
     if (minPlayers == null) return '$maxPlayers players';

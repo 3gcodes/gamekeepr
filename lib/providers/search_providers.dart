@@ -92,3 +92,58 @@ final allUniqueTagsProvider = FutureProvider<List<String>>((ref) async {
 
 // Expansion Filter Provider
 final expansionFilterProvider = StateProvider<ExpansionFilter>((ref) => ExpansionFilter.baseGames);
+
+// Player counts offered by the max players filter. The last one also matches
+// every game with a higher max player count (shown as "6+").
+const maxPlayersFilterOptions = [1, 2, 3, 4, 5, 6];
+
+// Collection Filter Providers (null / empty = not filtering)
+final maxPlayersFilterProvider = StateProvider<int?>((ref) => null);
+final categoryFilterProvider = StateProvider<Set<String>>((ref) => const {});
+final mechanicFilterProvider = StateProvider<Set<String>>((ref) => const {});
+
+// Helper function to check if a game matches the collection filters
+bool gameMatchesFilters(
+  Game game,
+  int? maxPlayers,
+  Set<String> categories,
+  Set<String> mechanics,
+) {
+  // Max player count must match exactly, except the last option which also
+  // matches anything higher
+  if (maxPlayers != null) {
+    final gameMaxPlayers = game.maxPlayers;
+    if (gameMaxPlayers == null) {
+      return false;
+    }
+    final matches = maxPlayers == maxPlayersFilterOptions.last
+        ? gameMaxPlayers >= maxPlayers
+        : gameMaxPlayers == maxPlayers;
+    if (!matches) {
+      return false;
+    }
+  }
+
+  // Game must have at least one of the selected categories
+  if (categories.isNotEmpty &&
+      !categories.any((category) => game.categories?.contains(category) ?? false)) {
+    return false;
+  }
+
+  // Game must have at least one of the selected mechanics
+  if (mechanics.isNotEmpty &&
+      !mechanics.any((mechanic) => game.mechanics?.contains(mechanic) ?? false)) {
+    return false;
+  }
+
+  return true;
+}
+
+// Number of collection filters currently set
+final activeFilterCountProvider = Provider<int>((ref) {
+  var count = 0;
+  if (ref.watch(maxPlayersFilterProvider) != null) count++;
+  if (ref.watch(categoryFilterProvider).isNotEmpty) count++;
+  if (ref.watch(mechanicFilterProvider).isNotEmpty) count++;
+  return count;
+});

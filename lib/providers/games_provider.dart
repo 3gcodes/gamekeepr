@@ -36,10 +36,13 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
       throw Exception('API token is required. Please set it in settings.');
     }
 
-    try {
-      final bggService = ref.read(bggServiceProvider);
-      final db = ref.read(databaseServiceProvider);
+    final bggService = ref.read(bggServiceProvider);
+    final db = ref.read(databaseServiceProvider);
 
+    // BGG IDs of games we still need details for
+    final needDetails = <int>[];
+
+    try {
       // Set the API token
       bggService.setBearerToken(apiToken);
       print('🔑 Using API token for BGG authentication');
@@ -53,18 +56,22 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
         final existingGame = await db.getGameByBggId(game.bggId);
 
         if (existingGame != null) {
-          // Update existing game, preserve location and owned status
-          final updatedGame = game.copyWith(
-            id: existingGame.id,
-            location: existingGame.location,
-            owned: existingGame.owned,
-            wishlisted: existingGame.wishlisted,
-            savedForLater: existingGame.savedForLater,
+          // Update what the collection knows about, preserve everything else
+          // (location, owned status, details, market value, ...)
+          final updatedGame = existingGame.copyWith(
+            name: game.name,
+            imageUrl: game.imageUrl,
+            thumbnailUrl: game.thumbnailUrl,
+            yearPublished: game.yearPublished,
           );
           await db.updateGame(updatedGame);
+          if (!_hasDetails(existingGame)) {
+            needDetails.add(game.bggId);
+          }
         } else {
           // Insert new game (from collection sync, so mark as owned)
           await db.insertGame(game.copyWith(owned: true));
+          needDetails.add(game.bggId);
         }
       }
 
@@ -74,6 +81,30 @@ class GamesNotifier extends StateNotifier<AsyncValue<List<Game>>> {
       state = AsyncValue.error(e, stack);
       rethrow;
     }
+
+    if (needDetails.isEmpty) return;
+
+    // The collection response has no player counts, categories or mechanics,
+    // so fetch the details for games that don't have them yet
+    try {
+      print('🔍 Fetching details for ${needDetails.length} games');
+      await for (final detailedGames in bggService.fetchGamesDetails(needDetails)) {
+        for (final details in detailedGames) {
+          final game = await db.getGameByBggId(details.bggId);
+          if (game == null) continue;
+
+          await db.updateGame(game.withDetails(details));
+        }
+      }
+    } finally {
+      // Reload games, keeping whatever details were saved before a failure
+      await loadGames();
+    }
+  }
+
+  // Whether a game's details (players, categories, mechanics, ...) have been fetched
+  bool _hasDetails(Game game) {
+    return game.description != null && game.maxPlayers != null;
   }
 
   Future<void> updateGameLocation(int gameId, String location) async {
