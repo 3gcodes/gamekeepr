@@ -12,3 +12,5 @@ export 'loans_provider.dart';
 export 'ui_state_providers.dart';
 export 'collectibles_provider.dart';
 export 'players_provider.dart';
+export 'market_value_providers.dart';
+export 'market_value_sync_provider.dart';

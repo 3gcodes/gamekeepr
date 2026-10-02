@@ -4,6 +4,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive_io.dart';
 import '../models/game.dart';
+import '../models/market_value.dart';
 import '../models/play.dart';
 import '../models/scheduled_game.dart';
 import '../models/game_loan.dart';
@@ -31,7 +32,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 18,
+      version: 19,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -61,7 +62,12 @@ class DatabaseService {
         owned INTEGER NOT NULL DEFAULT 1,
         wishlisted INTEGER NOT NULL DEFAULT 0,
         saved_for_later INTEGER NOT NULL DEFAULT 0,
-        has_nfc_tag INTEGER NOT NULL DEFAULT 0
+        has_nfc_tag INTEGER NOT NULL DEFAULT 0,
+        market_value_low REAL,
+        market_value_mid REAL,
+        market_value_high REAL,
+        market_value_count INTEGER,
+        market_value_synced TEXT
       )
     ''');
 
@@ -506,6 +512,15 @@ class DatabaseService {
         ALTER TABLE play_players ADD COLUMN score TEXT
       ''');
     }
+
+    if (oldVersion < 19) {
+      // Add BGG Marketplace value columns to games table
+      await db.execute('ALTER TABLE games ADD COLUMN market_value_low REAL');
+      await db.execute('ALTER TABLE games ADD COLUMN market_value_mid REAL');
+      await db.execute('ALTER TABLE games ADD COLUMN market_value_high REAL');
+      await db.execute('ALTER TABLE games ADD COLUMN market_value_count INTEGER');
+      await db.execute('ALTER TABLE games ADD COLUMN market_value_synced TEXT');
+    }
   }
 
   Future<Game> insertGame(Game game) async {
@@ -589,6 +604,24 @@ class DatabaseService {
     return await db.update(
       'games',
       {'owned': owned ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [gameId],
+    );
+  }
+
+  /// Persists a market value summary for a single game, touching only the
+  /// market value columns so it won't clobber other in-flight edits.
+  Future<int> updateGameMarketValue(int gameId, MarketValue value) async {
+    final db = await database;
+    return await db.update(
+      'games',
+      {
+        'market_value_low': value.hasListings ? value.low : null,
+        'market_value_mid': value.hasListings ? value.mid : null,
+        'market_value_high': value.hasListings ? value.high : null,
+        'market_value_count': value.count,
+        'market_value_synced': value.syncedAt.toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [gameId],
     );
@@ -855,6 +888,31 @@ class DatabaseService {
     ''');
 
     return result;
+  }
+
+  /// Get games played within a date range, ordered by most recent play.
+  /// Used by the Recently Played view so it only loads a bounded window.
+  Future<List<GameWithPlayInfo>> getRecentlyPlayedGamesInRange(DateTime startDate, DateTime endDate) async {
+    final db = await database;
+
+    final start = DateTime(startDate.year, startDate.month, startDate.day).toIso8601String();
+    final end = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59).toIso8601String();
+
+    final result = await db.rawQuery('''
+      SELECT
+        g.*,
+        MAX(p.date_played) as last_played,
+        COUNT(p.id) as play_count,
+        SUM(CASE WHEN p.won = 1 THEN 1 ELSE 0 END) as wins,
+        SUM(CASE WHEN p.won = 0 THEN 1 ELSE 0 END) as losses
+      FROM games g
+      INNER JOIN plays p ON g.id = p.game_id
+      WHERE p.date_played >= ? AND p.date_played <= ?
+      GROUP BY g.id
+      ORDER BY MAX(p.date_played) DESC
+    ''', [start, end]);
+
+    return result.map((map) => GameWithPlayInfo.fromMap(map)).toList();
   }
 
   /// Get games played within a specific date range
@@ -1502,6 +1560,20 @@ class DatabaseService {
     }
 
     return result;
+  }
+
+  /// Get the player IDs from the most recently recorded play.
+  /// Used to surface recently-used players at the top of selection lists.
+  Future<List<int>> getRecentPlayerIds() async {
+    final db = await database;
+    final result = await db.rawQuery('''
+      SELECT pp.player_id
+      FROM play_players pp
+      WHERE pp.play_id = (
+        SELECT id FROM plays ORDER BY date_played DESC, id DESC LIMIT 1
+      )
+    ''');
+    return result.map((row) => row['player_id'] as int).toList();
   }
 
   /// Get all distinct play locations for autocomplete

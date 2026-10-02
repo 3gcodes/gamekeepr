@@ -47,6 +47,11 @@ class Game {
   final bool wishlisted; // Whether this game is on the user's wishlist
   final bool savedForLater; // Whether this game is saved for later
   final bool hasNfcTag; // Whether an NFC tag has been assigned to this game
+  final double? marketValueLow; // Cheapest active BGG Marketplace listing (USD)
+  final double? marketValueMid; // Median active listing asking price (USD)
+  final double? marketValueHigh; // Most expensive active listing (USD)
+  final int? marketValueCount; // Number of listings the summary is based on
+  final DateTime? marketValueSynced; // When market value was last fetched
 
   Game({
     this.id,
@@ -71,6 +76,11 @@ class Game {
     this.wishlisted = false,
     this.savedForLater = false,
     this.hasNfcTag = false,
+    this.marketValueLow,
+    this.marketValueMid,
+    this.marketValueHigh,
+    this.marketValueCount,
+    this.marketValueSynced,
   });
 
   Map<String, dynamic> toMap() {
@@ -97,6 +107,11 @@ class Game {
       'wishlisted': wishlisted ? 1 : 0,
       'saved_for_later': savedForLater ? 1 : 0,
       'has_nfc_tag': hasNfcTag ? 1 : 0,
+      'market_value_low': marketValueLow,
+      'market_value_mid': marketValueMid,
+      'market_value_high': marketValueHigh,
+      'market_value_count': marketValueCount,
+      'market_value_synced': marketValueSynced?.toIso8601String(),
     };
   }
 
@@ -138,6 +153,13 @@ class Game {
       wishlisted: map['wishlisted'] == null ? false : (map['wishlisted'] as int) == 1,
       savedForLater: map['saved_for_later'] == null ? false : (map['saved_for_later'] as int) == 1,
       hasNfcTag: map['has_nfc_tag'] == null ? false : (map['has_nfc_tag'] as int) == 1,
+      marketValueLow: (map['market_value_low'] as num?)?.toDouble(),
+      marketValueMid: (map['market_value_mid'] as num?)?.toDouble(),
+      marketValueHigh: (map['market_value_high'] as num?)?.toDouble(),
+      marketValueCount: map['market_value_count'] as int?,
+      marketValueSynced: map['market_value_synced'] != null
+          ? DateTime.parse(map['market_value_synced'] as String)
+          : null,
     );
   }
 
@@ -164,6 +186,11 @@ class Game {
     bool? wishlisted,
     bool? savedForLater,
     bool? hasNfcTag,
+    double? marketValueLow,
+    double? marketValueMid,
+    double? marketValueHigh,
+    int? marketValueCount,
+    DateTime? marketValueSynced,
   }) {
     return Game(
       id: id ?? this.id,
@@ -188,6 +215,11 @@ class Game {
       wishlisted: wishlisted ?? this.wishlisted,
       savedForLater: savedForLater ?? this.savedForLater,
       hasNfcTag: hasNfcTag ?? this.hasNfcTag,
+      marketValueLow: marketValueLow ?? this.marketValueLow,
+      marketValueMid: marketValueMid ?? this.marketValueMid,
+      marketValueHigh: marketValueHigh ?? this.marketValueHigh,
+      marketValueCount: marketValueCount ?? this.marketValueCount,
+      marketValueSynced: marketValueSynced ?? this.marketValueSynced,
     );
   }
 

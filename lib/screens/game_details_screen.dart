@@ -6,7 +6,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../models/game.dart';
+import '../models/market_value.dart';
 import '../models/play.dart';
 import '../models/play_with_players.dart';
 import '../models/scheduled_game.dart';
@@ -1316,6 +1318,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
       await _loadPlays();
       // Reload recently played games list
       ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+      ref.invalidate(allTimeRecentlyPlayedGamesProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1410,6 +1413,7 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
 
       // Reload recently played games list
       ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+      ref.invalidate(allTimeRecentlyPlayedGamesProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1525,11 +1529,33 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Title
-          Text(
-            game.name,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                game.name,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              Text(
+                ' - ',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              GestureDetector(
+                onTap: () => launchUrl(
+                  Uri.parse('https://boardgamegeek.com/boardgame/${game.bggId}'),
+                  mode: LaunchMode.externalApplication,
                 ),
+                child: Text(
+                  'view on bgg',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        decoration: TextDecoration.underline,
+                      ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 
@@ -1572,6 +1598,9 @@ class _GameDetailsScreenState extends ConsumerState<GameDetailsScreen> with Sing
             value: game.hasNfcTag ? 'Assigned' : 'Unassigned',
             valueColor: game.hasNfcTag ? Colors.green : Colors.purple,
           ),
+
+          const SizedBox(height: 16),
+          _MarketValueCard(bggId: game.bggId),
 
           const SizedBox(height: 16),
           const Divider(),
@@ -2876,6 +2905,129 @@ class _InfoRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Inline card showing current BGG Marketplace asking prices for a game.
+/// Lazy-loads (and caches for 24h) when the game detail screen is opened.
+class _MarketValueCard extends ConsumerWidget {
+  final int bggId;
+
+  const _MarketValueCard({required this.bggId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final asyncValue = ref.watch(marketValueProvider(bggId));
+    final currency = NumberFormat.simpleCurrency(name: 'USD');
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.sell,
+                    size: 20, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Market Value',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const Spacer(),
+                asyncValue.isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.refresh),
+                        iconSize: 20,
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Refresh',
+                        onPressed: () =>
+                            ref.read(marketValueProvider(bggId).notifier).refresh(),
+                      ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            asyncValue.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Checking current listings…'),
+              ),
+              error: (e, _) => Row(
+                children: [
+                  const Expanded(
+                    child: Text('Could not load market value.'),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        ref.read(marketValueProvider(bggId).notifier).refresh(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+              data: (value) => _buildContent(context, value, currency),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(
+      BuildContext context, MarketValue? value, NumberFormat currency) {
+    if (value == null || !value.hasListings) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Text('No active listings.'),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _valueColumn(context, 'Low', currency.format(value.low)),
+            _valueColumn(context, 'Median', currency.format(value.mid)),
+            _valueColumn(context, 'High', currency.format(value.high)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Based on ${value.count} active listing${value.count == 1 ? '' : 's'} · asking prices, not sold',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        Text(
+          'Updated ${DateFormat.yMMMd().add_jm().format(value.syncedAt)}',
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+      ],
+    );
+  }
+
+  Widget _valueColumn(BuildContext context, String label, String amount) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          amount,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+      ],
     );
   }
 }

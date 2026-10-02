@@ -109,6 +109,9 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
 
     final selectedIds = _selectedPlayers.map((sp) => sp.player.id).toSet();
 
+    // Player IDs from the most recent play, to float to the top of the list.
+    final recentPlayerIds = await ref.read(recentPlayerIdsProvider.future);
+
     if (!mounted) return;
 
     await showModalBottomSheet(
@@ -117,6 +120,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
       builder: (context) {
         return _AddPlayersSheet(
           allPlayers: allPlayers,
+          recentPlayerIds: recentPlayerIds,
           selectedPlayerIds: selectedIds,
           onPlayersSelected: (players) {
             setState(() {
@@ -230,6 +234,7 @@ class _RecordPlayScreenState extends ConsumerState<RecordPlayScreen> {
 
       // Reload recently played games list
       ref.read(recentlyPlayedGamesProvider.notifier).loadRecentlyPlayedGames();
+      ref.invalidate(allTimeRecentlyPlayedGamesProvider);
       // Refresh location suggestions cache
       ref.invalidate(playLocationsProvider);
 
@@ -583,6 +588,7 @@ class _SelectedPlayer {
 // Bottom sheet for adding players
 class _AddPlayersSheet extends StatefulWidget {
   final List<Player> allPlayers;
+  final List<int> recentPlayerIds;
   final Set<int?> selectedPlayerIds;
   final ValueChanged<List<Player>> onPlayersSelected;
   final ValueChanged<Player> onPlayerCreated;
@@ -590,6 +596,7 @@ class _AddPlayersSheet extends StatefulWidget {
 
   const _AddPlayersSheet({
     required this.allPlayers,
+    required this.recentPlayerIds,
     required this.selectedPlayerIds,
     required this.onPlayersSelected,
     required this.onPlayerCreated,
@@ -654,6 +661,34 @@ class _AddPlayersSheetState extends State<_AddPlayersSheet> {
     Navigator.pop(context);
   }
 
+  /// Players from the most recent play, in that play's order, to show at the top.
+  List<Player> get _recentPlayers {
+    final byId = {for (final p in _players) p.id: p};
+    return [
+      for (final id in widget.recentPlayerIds)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  Widget _buildPlayerTile(Player player) {
+    return CheckboxListTile(
+      value: _checkedIds.contains(player.id),
+      onChanged: (checked) {
+        setState(() {
+          if (checked == true) {
+            _checkedIds.add(player.id);
+          } else {
+            _checkedIds.remove(player.id);
+          }
+        });
+      },
+      title: Text(player.name),
+      subtitle: player.bggUsername != null
+          ? Text('BGG: ${player.bggUsername}')
+          : null,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -706,24 +741,14 @@ class _AddPlayersSheetState extends State<_AddPlayersSheet> {
                 child: ListView(
                   controller: scrollController,
                   children: [
-                    ..._players.map((player) {
-                      return CheckboxListTile(
-                        value: _checkedIds.contains(player.id),
-                        onChanged: (checked) {
-                          setState(() {
-                            if (checked == true) {
-                              _checkedIds.add(player.id);
-                            } else {
-                              _checkedIds.remove(player.id);
-                            }
-                          });
-                        },
-                        title: Text(player.name),
-                        subtitle: player.bggUsername != null
-                            ? Text('BGG: ${player.bggUsername}')
-                            : null,
-                      );
-                    }),
+                    // Recently-used players (from the last recorded play) on top.
+                    if (_recentPlayers.isNotEmpty) ...[
+                      ..._recentPlayers.map(_buildPlayerTile),
+                      const Divider(height: 1, thickness: 1),
+                    ],
+
+                    // Full list of all players (recent players are not excluded).
+                    ..._players.map(_buildPlayerTile),
 
                     const Divider(),
 

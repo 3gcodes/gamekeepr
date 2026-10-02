@@ -9,6 +9,10 @@ class BggService {
   static const String _baseUrl = 'https://boardgamegeek.com/xmlapi2';
   static const String _webBaseUrl = 'https://boardgamegeek.com';
 
+  // User-Agent for XML API v2 requests. Must not look like a browser:
+  // Cloudflare answers a spoofed browser UA on /xmlapi2 with a 403 challenge.
+  static const String _apiUserAgent = 'GameKeepr/1.0';
+
   // Store bearer token for API v2 authenticated requests
   String? _bearerToken;
 
@@ -265,7 +269,7 @@ class BggService {
 
     // Create headers with bearer token
     final headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': _apiUserAgent,
       'Accept': 'application/xml',
       'Authorization': 'Bearer $_bearerToken',
     };
@@ -342,7 +346,7 @@ class BggService {
 
     // Create a Dio instance with bearer token if available
     final headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': _apiUserAgent,
       'Accept': 'application/xml',
     };
 
@@ -575,7 +579,7 @@ class BggService {
 
     // Create headers with bearer token if available
     final headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': _apiUserAgent,
       'Accept': 'application/xml',
     };
 
@@ -663,7 +667,7 @@ class BggService {
     print('🔍 BGG Thumbnails Request: $detailsUrl');
 
     final headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': _apiUserAgent,
       'Accept': 'application/xml',
     };
 
@@ -949,7 +953,7 @@ class BggService {
     print('🔍 BGG Plays Request: $playsUrl');
 
     final headers = {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'User-Agent': _apiUserAgent,
       'Accept': 'application/xml',
       'Authorization': 'Bearer $_bearerToken',
     };

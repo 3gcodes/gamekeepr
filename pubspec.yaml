@@ -34,12 +34,7 @@ dependencies:
   cached_network_image: ^3.3.0
   flutter_cache_manager: ^3.3.1
   image_picker: ^1.0.7
-  camera: ^0.10.5+9
   mobile_scanner: ^5.2.3
-
-  # ML & Text Recognition
-  google_mlkit_text_recognition: ^0.13.0
-  string_similarity: ^2.0.0
 
   # Deep Links
   app_links: ^6.3.2
@@ -52,6 +47,7 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   archive: ^3.4.10
   crypto: ^3.0.3
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

@@ -51,3 +51,9 @@ final playLocationsProvider = FutureProvider<List<String>>((ref) async {
   final db = ref.watch(databaseServiceProvider);
   return await db.getAllPlayLocations();
 });
+
+// Player IDs from the most recent play (for surfacing recent players at the top)
+final recentPlayerIdsProvider = FutureProvider<List<int>>((ref) async {
+  final db = ref.watch(databaseServiceProvider);
+  return await db.getRecentPlayerIds();
+});

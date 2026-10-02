@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:intl/intl.dart';
 import '../providers/app_providers.dart';
 import '../services/database_service.dart';
 
@@ -347,6 +348,78 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Widget _buildCollectionValueSection() {
+    final syncState = ref.watch(marketValueSyncProvider);
+    final isRunning = syncState.status == MarketValueSyncStatus.running;
+
+    // Total collection value from cached medians (sum of per-game medians).
+    final totalValue = ref.watch(gamesProvider).maybeWhen(
+          data: (games) => games
+              .where((g) => g.owned && g.marketValueMid != null)
+              .fold<double>(0, (sum, g) => sum + g.marketValueMid!),
+          orElse: () => 0.0,
+        );
+    final currency = NumberFormat.simpleCurrency(name: 'USD');
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Collection Value',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Fetch current BoardGameGeek Marketplace asking prices (USD) for '
+            'every owned game. This keeps running if you leave this screen.',
+            style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+          ),
+          const SizedBox(height: 8),
+          if (totalValue > 0)
+            Text(
+              'Estimated total (median): ${currency.format(totalValue)}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: isRunning
+                  ? null
+                  : () => ref.read(marketValueSyncProvider.notifier).startAll(),
+              icon: const Icon(Icons.sell),
+              label: Text(
+                isRunning ? 'Valuing…' : 'Value entire collection',
+              ),
+            ),
+          ),
+          if (isRunning) ...[
+            const SizedBox(height: 12),
+            LinearProgressIndicator(value: syncState.progress),
+            const SizedBox(height: 4),
+            Text(
+              '${syncState.completed} / ${syncState.total}'
+              '${syncState.currentName != null ? ' · ${syncState.currentName}' : ''}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+          if (syncState.status == MarketValueSyncStatus.done &&
+              syncState.total > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Valued ${syncState.total} game${syncState.total == 1 ? '' : 's'}.',
+              style: TextStyle(fontSize: 12, color: Colors.green[700]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final gameCount = ref.watch(gamesProvider).when(
@@ -572,6 +645,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ),
+
+          const SizedBox(height: 8),
+          const Divider(),
+          const SizedBox(height: 8),
+
+          // Collection Value Section
+          _buildCollectionValueSection(),
 
           const SizedBox(height: 8),
           const Divider(),

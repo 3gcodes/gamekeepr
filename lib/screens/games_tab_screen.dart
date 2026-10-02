@@ -5,6 +5,7 @@ import '../providers/app_providers.dart';
 import '../models/game.dart';
 import 'game_details_screen.dart';
 import 'bgg_search_screen.dart';
+import '../widgets/recently_played_view.dart';
 
 class GamesTabScreen extends ConsumerStatefulWidget {
   const GamesTabScreen({super.key});
@@ -103,10 +104,11 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
         title: const Text('Games'),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           tabs: const [
             Tab(text: 'Collection'),
+            Tab(text: 'Recently Played'),
             Tab(text: 'Wishlist'),
-            Tab(text: 'Saved'),
           ],
         ),
         actions: [
@@ -173,8 +175,8 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
                 controller: _tabController,
                 children: [
                   _buildCollectionView(),
+                  const RecentlyPlayedView(),
                   _buildWishlistView(),
-                  _buildSavedForLaterView(),
                 ],
               ),
             ),
@@ -292,70 +294,6 @@ class _GamesTabScreenState extends ConsumerState<GamesTabScreen>
                   const SizedBox(height: 8),
                   Text(
                     'Mark games as favorites to add them here',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-          itemCount: games.length,
-          itemBuilder: (context, index) {
-            final game = games[index];
-            return _buildGameListItem(game, isOwned: game.owned);
-          },
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, stack) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('Error: $error'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSavedForLaterView() {
-    final savedForLater = ref.watch(savedForLaterProvider);
-
-    return savedForLater.when(
-      data: (games) {
-        if (games.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.bookmark_border,
-                  size: 64,
-                  color: Colors.grey[400],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _searchController.text.isEmpty
-                      ? 'No games saved for later'
-                      : 'No games found',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                if (_searchController.text.isEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Save games you want to track for later',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[500],
